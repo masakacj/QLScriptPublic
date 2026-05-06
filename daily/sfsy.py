@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+import sys
+
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 """
 顺丰速运日常积分任务
 Author: 爱学习的呆子
@@ -400,8 +409,22 @@ class SFHttpClient:
                     if '=' in item:
                         k, v = item.split('=', 1)
                         cookie_dict[k] = v
+                def _safe_cookie_value(value: str) -> str:
+                    """
+                    过滤 Cookie 中的非法字符（HTTP Header 只能是 latin-1）
+                    """
+                    try:
+                        value.encode('latin-1')
+                        return value
+                    except UnicodeEncodeError:
+                        # 丢弃中文 / emoji
+                        return value.encode('latin-1', 'ignore').decode('latin-1')
+
+
                 for k, v in cookie_dict.items():
-                    self.session.cookies.set(k, v, domain='mcs-mimp-web.sf-express.com')
+                    safe_v = _safe_cookie_value(v)
+                    self.session.cookies.set(k, safe_v, domain='mcs-mimp-web.sf-express.com')
+
                 user_id = cookie_dict.get('_login_user_id_', '')
                 phone = cookie_dict.get('_login_mobile_', '')
                 if phone:
