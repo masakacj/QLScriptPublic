@@ -30,6 +30,7 @@
   // Never publish the private baseline or a populated token.
   const STORED_INGEST_SECRET_KEY = 'hjd2048-ingest-secret-v1';
   let runtimeIngestSecret = INGEST_SHARED_SECRET;
+  let updateReady = false;
   const PUBLIC_UPDATE_URL = 'https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/hjd2048/hjd2048-magnet-queue.user.js';
   const PROTOCOL_VERSION = 3;
 
@@ -118,9 +119,11 @@
       await setStoredValue(STORED_INGEST_SECRET_KEY, INGEST_SHARED_SECRET);
     }
     runtimeIngestSecret = INGEST_SHARED_SECRET || existing;
-    if (runtimeIngestSecret.length < 32) {
-      throw new Error('未找到本地写入授权，请先运行一次私有迁移脚本');
+    const verified = String(await getStoredValue(STORED_INGEST_SECRET_KEY, '') || '');
+    if (runtimeIngestSecret.length < 32 || verified !== runtimeIngestSecret) {
+      throw new Error('未验证本地写入授权已持久化，请先运行一次私有迁移脚本');
     }
+    updateReady = hasGmStorage();
   }
 
   async function getStoredValue(key, fallbackValue) {
@@ -730,7 +733,13 @@
     actions.append(
       createActionButton('立即尝试发送', handleRetryNow),
       createActionButton('Ping 接口', handlePing),
-      createActionButton('脚本更新', () => window.open(PUBLIC_UPDATE_URL, '_blank'))
+      createActionButton('脚本更新', () => {
+        if (!updateReady) {
+          showToast('请先完成私有脚本首次运行并确认授权已保存');
+          return;
+        }
+        window.open(PUBLIC_UPDATE_URL, '_blank');
+      })
     );
 
     header.append(title, stats, diagnostics, actions);
@@ -789,6 +798,7 @@
   }
 
   function setQueueCount(count) {
+
     queueCount = Math.max(0, Number(count) || 0);
     renderButton();
   }
@@ -798,7 +808,6 @@
 
     try {
       return new Date(timestamp).toLocaleString('zh-CN', { hour12: false });
-
     } catch {
       return String(timestamp);
     }
@@ -1590,6 +1599,7 @@
           const settled = await settleFailure(claimed.requestId, claimed.batch, error);
           await refreshUi(settled.state);
           console.error('队列批次发送失败，将稍后重试:', error);
+
         }
       }
     } finally {
@@ -1599,7 +1609,6 @@
         } catch (error) {
           console.error('释放 worker 租约失败:', error);
         }
-
       }
     }
   }
