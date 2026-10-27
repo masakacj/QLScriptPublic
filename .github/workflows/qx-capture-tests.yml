@@ -1,0 +1,29 @@
+name: QX Cookie Capture Tests
+
+on:
+  push:
+    paths:
+      - "quantumultx/ql-capture/**"
+      - ".github/workflows/qx-capture-tests.yml"
+  pull_request:
+    paths:
+      - "quantumultx/ql-capture/**"
+      - ".github/workflows/qx-capture-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  qx-simulated-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: |
+          for file in quantumultx/ql-capture/*.js; do
+            node --check "$file"
+          done
+      - name: Test online initialization and status
+        run: node quantumultx/ql-capture/test.cjs
