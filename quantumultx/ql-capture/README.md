@@ -8,6 +8,18 @@
 - 源码目录：`quantumultx/ql-capture/`
 - **仅在本机配置 CAPTURE_TOKEN，不要上传 GitHub，也不要发送到公开聊天。**
 
+## 家里 GitHub Raw 访问超时：改用自建镜像（2026-10-27）
+
+若家庭网络访问 `raw.githubusercontent.com` 间歇性超时，**在 QX 中使用这条镜像主配置**，不再引用 GitHub Raw：
+
+```text
+https://qlcap.781751.xyz:58443/qx/qx-cookie-only.conf
+```
+
+镜像主配置内的 Rewrite、采集脚本、在线初始化、状态检查和开启/关闭任务都指向同一台自建服务器上的 `/qx/` 静态资源。已分别在 mcphome 和办公室进行 HTTPS 200 验收，TLS 正常，且不改变原有 `/api/v1/` Cookie 网关接口。GitHub 仓库依然是源码位置。
+
+**同步限制**：当前镜像是服务端已部署版本；GitHub 推送更新后，需要在 mcphome 同步发布到静态镜像（`runtime/ql-capture-gateway/deploy_qx_mirror.py`），不是 GitHub 提交后实时自动同步。更新 QX 远程主配置需在 QX 中刷新/重新下载，不要把私密令牌提交到 GitHub。
+
 ## 一键导入专用 QX 主配置（推荐）
 
 仅用 Quantumult X 抓 Cookie、没有其他节点/代理业务时，可以直接用完整的在线主配置：
