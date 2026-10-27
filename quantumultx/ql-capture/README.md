@@ -8,6 +8,18 @@
 - 源码目录：`quantumultx/ql-capture/`
 - **仅在本机配置 CAPTURE_TOKEN，不要上传 GitHub，也不要发送到公开聊天。**
 
+## 一键导入专用 QX 主配置（推荐）
+
+仅用 Quantumult X 抓 Cookie、没有其他节点/代理业务时，可以直接用完整的在线主配置：
+
+```text
+https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/qx-cookie-only.conf
+```
+
+该配置是 **无代理节点、默认 DIRECT** 的最小主配置，已内置顺丰 Rewrite 远程资源和四个在线交互任务（QL Setup / QL Status / QL Arm / QL Disarm）。在 QX「设置 → 配置文件 → 下载/远程资源」导入该 URL，并切换启用；不需要再单独导入同一条 Rewrite 或逐条添加任务，否则可能出现重复。主配置更新后需手动刷新/重新下载以获得新版；QX 可能不会自动把本地主配置替换为上游最新版。
+
+**重要**：切换主配置前备份旧配置。在线主配置不包含、不应包含个人 CA 证书和密钥，导入后仍需在 QX 设置中安装并信任 MitM 证书，开启 QX Tunnel、重写、MitM、任务开关。纯 DIRECT 模式仍会通过 QX VPN 处理流量以支持 HTTPS 抓包，不提供代理翻墙功能。不要将 `CAPTURE_TOKEN` 写入公开主配置。首次绑定使用 Setup 交互任务的临时 `#token=...`，执行成功立刻移除参数，详见后文。
+
 ## 1. 重写和 HTTPS 解密（已配置可跳过）
 
 打开 Quantumult X → 设置 → 重写 → 资源，添加远程 Rewrite：
