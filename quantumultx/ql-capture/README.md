@@ -20,6 +20,18 @@ https://qlcap.781751.xyz:58443/qx/qx-cookie-only.conf
 
 **同步限制**：当前镜像是服务端已部署版本；GitHub 推送更新后，需要在 mcphome 同步发布到静态镜像（`runtime/ql-capture-gateway/deploy_qx_mirror.py`），不是 GitHub 提交后实时自动同步。更新 QX 远程主配置需在 QX 中刷新/重新下载，不要把私密令牌提交到 GitHub。
 
+## 重要：更新主配置会覆盖 QX MitM 证书
+
+QX 的 MitM 私有 CA 数据保存在主配置 `[mitm]` 下的 `passphrase`、`p12`。本仓库及自建 `/qx/qx-cookie-only.conf` 是**公开配置**，不含这两项，因此每次用在线主配置**覆盖**本地主配置，都会丢失证书设置，要求重新导入。
+
+**正确用法（仅初始化主配置一次）**：
+1. 初次导入 `https://qlcap.781751.xyz:58443/qx/qx-cookie-only.conf`，在 QX 上生成、安装并信任证书。
+2. 在 QX 本机主配置的 `[mitm]` 下确认已保存 `passphrase` 和 `p12`，并备份包含它们的配置到**私人加密位置**（不能上传公开 GitHub 或公开镜像）。
+3. **后续不要再次覆盖下载主配置。** 仅刷新 `[rewrite_remote]` 的在线重写，以及已有 `[task_local]` 指向的在线 JS；脚本在服务器端更新即可。
+4. 仅当需要修改主配置的结构时，先备份证书信息，在本机合并修改，保证 `[mitm]` 中保留原有 `passphrase`/`p12`，而不是用公开模板直接覆盖。
+
+QX 应用里的系统“证书信任”并不能代替主配置中的私有 CA 数据。公开服务端应永远不保存或接收私有 CA 的 `p12` 和密码短语。
+
 ## 一键导入专用 QX 主配置（推荐）
 
 仅用 Quantumult X 抓 Cookie、没有其他节点/代理业务时，可以直接用完整的在线主配置：
