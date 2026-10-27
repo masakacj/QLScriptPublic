@@ -33,7 +33,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   x=await run('setup',{fragment:'#token='+TOKEN,prefs:old,answer:{statusCode:401,body:'{"error":"unauthorized"}'}});
   assert.equal(x.data.qlcap_v1_token,old.qlcap_v1_token);assert.equal(x.data.qlcap_v1_armed,'1');
   x=await run('setup',{prefs:old});assert.equal(x.calls,1);assert(x.notifications.join(' ').includes('配置正常'));
-  x=await run('status');assert.equal(x.calls,0);assert(x.notifications.join(' ').includes('尚未配置'));
+  x=await run('status');assert.equal(x.calls,0);assert(x.notifications.join(' ').includes('尚未初始化'));
   x=await run('status',{prefs:old});assert.equal(x.calls,1);assert(x.notifications.join(' ').includes('DRY_RUN'));
   x=await run('status',{prefs:old,answer:{statusCode:401,body:'{"error":"unauthorized"}'}});assert(x.notifications.join(' ').includes('401'));
   x=await run('status',{prefs:old,reject:true});assert(x.notifications.join(' ').includes('网络异常'));
