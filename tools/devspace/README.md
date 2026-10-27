@@ -1,6 +1,6 @@
 # DevSpace Windows 后台一键修复 / 安装
 
-面向 mcphome、mcpoffice 以及其他原本使用 Windows PowerShell 手动启动 \`@waishnav/devspace\` 的机器。复用各机现有 Node.js、DevSpace CLI、\`.devspace\` 授权/配置和 SQLite 状态。**不会**重装程序、修改 Cloudflare Tunnel、重置 OAuth 或读取/复制凭据。Linux 上已有正常的 systemd 服务无需执行此脚本。
+面向 mcphome、mcpoffice 以及其他原本使用 Windows PowerShell 手动启动 `@waishnav/devspace` 的机器。复用各机现有 Node.js、DevSpace CLI、`.devspace` 授权/配置和 SQLite 状态。**不会**重装程序、修改 Cloudflare Tunnel、重置 OAuth 或读取/复制凭据。Linux 上已有正常的 systemd 服务无需执行此脚本。
 
 ## 一键在线操作
 
@@ -28,9 +28,9 @@ catch {
 - 守护 Node/7878，检测失败时受限重启，保护现有端口归属；保留旧任务定义，以便迁移失败时尽可能恢复。
 - 在开始迁移前只读核对 Node、CLI、进程和授权文件存在性；GitHub 在线下载的管理器必须匹配安装器内固定 SHA-256。
 - 若不要求开机无人登录运行，可在最后一行改成：
-  \`& ([scriptblock]::Create($src)) -Mode Logon\`（登录后启动，无须提供 Windows 密码）。
+  `& ([scriptblock]::Create($src)) -Mode Logon`（登录后启动，无须提供 Windows 密码）。
 - 若只想预检，可将最后一行改成：
-  \`& ([scriptblock]::Create($src)) -CheckOnly\`。
+  `& ([scriptblock]::Create($src)) -CheckOnly`。
 
 ## 已验证
 
@@ -43,7 +43,7 @@ catch {
 
 成功安装后，管理器常驻文件路径为：
 
-\`%LOCALAPPDATA%\DevSpaceManaged\devspace-managed.ps1\`
+`%LOCALAPPDATA%\DevSpaceManaged\devspace-managed.ps1`
 
 本机同一 Windows 用户的 PowerShell：
 
@@ -55,11 +55,11 @@ $script = "$env:LOCALAPPDATA\DevSpaceManaged\devspace-managed.ps1"
 & $script -Action Start
 ~~~
 
-重新执行上方在线命令可以重新部署/覆盖原 Windows 任务（Boot 会再次要求 Windows 账户密码）。\`-Action Uninstall\` 仅清理本管理器创建的任务，保留 DevSpace 配置和授权。
+重新执行上方在线命令可以重新部署/覆盖原 Windows 任务（Boot 会再次要求 Windows 账户密码）。`-Action Uninstall` 仅清理本管理器创建的任务，保留 DevSpace 配置和授权。
 
 ## OAuth 有效期说明
 
-DevSpace 当前实现的 access token 默认有效期约 1 小时、refresh token 30 天，refresh token 支持轮换。后台运行、采用真实用户及持久 SQLite 状态能避免进程中断和 SYSTEM 访问错误，但**不等于强行延长或永久保活 ChatGPT 客户端 OAuth 授权**。客户端刷新失败仍需独立检查，不能把本地 \`/healthz\` 200 当成 OAuth 成功。
+DevSpace 当前实现的 access token 默认有效期约 1 小时、refresh token 30 天，refresh token 支持轮换。后台运行、采用真实用户及持久 SQLite 状态能避免进程中断和 SYSTEM 访问错误，但**不等于强行延长或永久保活 ChatGPT 客户端 OAuth 授权**。客户端刷新失败仍需独立检查，不能把本地 `/healthz` 200 当成 OAuth 成功。
 
 ## 安全说明
 
