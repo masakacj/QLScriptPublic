@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.2.1',P='qlcap_v1_';
+const V='1.3.0',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -19,7 +19,7 @@ function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i)
 function note(title,message){log(title);if(typeof $notify==='function')$notify('青龙采集 v'+V,title,message);}
 function main(){
  log('hook triggered');
- if(get('armed')!=='1'){log('skipped: not armed');return done();}
+ if(get('armed')==='0'){log('skipped: capture paused');return done();}
  const server=get('url').replace(/\/+$/,''),token=get('token');
  if(!/^https:\/\/[^/]+$/i.test(server)||token.length<32){log('skipped: setup absent');return done();}
  const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
@@ -34,7 +34,7 @@ function main(){
  log('matched SF; required fields present');
  const fp=hash(sf.names.map(k=>k+'='+cookies[k]).join('\0'));
  const last=get('sent_sf').split('|');
- if(last[0]===fp&&Date.now()-Number(last[1]||0)<1800000){log('skipped: recently sent');return done();}
+ if(last[0]===fp){log('skipped: recently sent');return done();}
  const payload={service:'sf',url:'https://'+sf.host+m[2],captured_at:Date.now(),cookies};
  log('submitting allowlisted fields to gateway');
  $task.fetch({url:server+'/api/v1/capture',method:'POST',
@@ -43,8 +43,7 @@ function main(){
    const code=Number(r.statusCode||r.status||0);log('gateway HTTP '+code);
    let body={};try{body=JSON.parse(r.body||'{}');}catch(e){log('response JSON invalid');}
    if(code===200&&['synced','unchanged','dry_run'].includes(body.status)){
-    if(body.status!=='dry_run')put('sent_sf',fp+'|'+Date.now());
-    put('armed','0');
+    put('sent_sf',fp+'|'+Date.now());
     if(body.status==='dry_run')note('顺丰 Cookie 获取成功','测试模式 · 已收到凭证，未写入青龙');
     else if(body.status==='synced')note('顺丰 Cookie 同步成功','已更新青龙对应账号');
     else note('顺丰 Cookie 已是最新','青龙无需更新');
