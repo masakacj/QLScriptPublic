@@ -1,32 +1,53 @@
-/* QL Capture / Quantumult X. Public code; never insert tokens here. */
+/* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const BASE='qlcap_v1_';
-const sf={id:'sf',host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],names:['sessionId','_login_mobile_','_login_user_id_']};
-const get=k=>$prefs.valueForKey(BASE+k)||'';
-const set=(k,v)=>$prefs.setValueForKey(String(v),BASE+k);
-function finish(){ $done({}); }
-function header(h,k){const x=Object.keys(h||{}).find(s=>s.toLowerCase()===k.toLowerCase());return x?String(h[x]):'';}
-function extract(raw){const out={};for(const name of sf.names){const key=name.replace(/[.*+?^$\x7b\x7d()|[\]\\]/g,'\\$&');const found=new RegExp('(?:^|[;,]\\s*)'+key+'=([^;\\r\\n,]+)','i').exec(raw||'');if(found&&found[1])out[name]=found[1].trim();}return out;}
-function valid(x){return sf.names.every(k=>typeof x[k]==='string'&&x[k].length>0);}
-function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(16);}
-function notify(t,m){if(typeof $notify==='function')$notify('青龙凭证采集',t,m);}
-function main(){
- if(get('armed')!=='1')return finish();
- const url=get('url').replace(/\/+$/,'');const token=get('token');
- if(!/^https:\/\/[^/]+$/i.test(url)||token.length<32)return finish();
- const m=/^https:\/\/([^/?#]+)(\/[^?#]*)/i.exec(($request||{}).url||'');
- if(!m||m[1].toLowerCase()!==sf.host||!sf.paths.some(p=>m[2].startsWith(p)))return finish();
- const a=extract(header(($request||{}).headers,'cookie'));
- const b=typeof $response==='undefined'?{}:extract(header($response.headers,'set-cookie'));
- const cookies=valid(a)?a:b;if(!valid(cookies))return finish();
- const fp=hash(sf.names.map(k=>k+'='+cookies[k]).join('\0'));
- const last=get('sent_sf').split('|');if(last[0]===fp&&Date.now()-Number(last[1]||0)<1800000)return finish();
- const payload={service:'sf',url:'https://'+sf.host+m[2],captured_at:Date.now(),cookies};
- $task.fetch({url:url+'/api/v1/capture',method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(payload),opts:{policy:'direct'}}).then(r=>{
- let body={};try{body=JSON.parse(r.body||'{}');}catch(e){}
- if(r.statusCode===200&&['synced','unchanged','dry_run'].includes(body.status)){if(body.status!=='dry_run')set('sent_sf',fp+'|'+Date.now());set('armed','0');notify('顺丰',body.status==='dry_run'?'测试捕获成功；未修改青龙':'青龙更新已确认；采集已关闭');}
- else notify('顺丰','接收端未确认成功；旧值保持不变');
- finish();
- }).catch(()=>{notify('顺丰','接收端连接失败，请检查 HTTPS');finish();});
+const V='1.2.0',P='qlcap_v1_';
+const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
+ names:['sessionId','_login_mobile_','_login_user_id_']};
+function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
+function get(k){return $prefs.valueForKey(P+k)||'';}
+function put(k,v){return $prefs.setValueForKey(String(v),P+k);}
+function done(){log('finish');$done({});}
+function header(o,n){const k=Object.keys(o||{}).find(x=>x.toLowerCase()===n);return k?String(o[k]):'';}
+function extract(s){
+ const out={};for(const n of sf.names){
+  const m=new RegExp('(?:^|[;,]\\s*)'+n+'=([^;\\r\\n,]+)','i').exec(s||'');
+  if(m&&m[1])out[n]=m[1].trim();
+ }return out;
 }
-try{main();}catch(e){finish();}
+function complete(c){return sf.names.every(n=>typeof c[n]==='string'&&c[n].length>0);}
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(16);}
+function note(title,message){log(title);if(typeof $notify==='function')$notify('青龙采集 v'+V,title,message);}
+function main(){
+ log('hook triggered');
+ if(get('armed')!=='1'){log('skipped: not armed');return done();}
+ const server=get('url').replace(/\/+$/,''),token=get('token');
+ if(!/^https:\/\/[^/]+$/i.test(server)||token.length<32){log('skipped: setup absent');return done();}
+ const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
+ const m=/^https:\/\/([^/?#]+)(\/[^?#]*)/i.exec(source);
+ if(!m||m[1].toLowerCase()!==sf.host||!sf.paths.some(p=>m[2].startsWith(p))){
+  log('skipped: source not on allowlist');return done();
+ }
+ const req=extract(header(($request||{}).headers,'cookie'));
+ const rsp=typeof $response==='undefined'?{}:extract(header($response.headers,'set-cookie'));
+ const cookies=complete(req)?req:rsp;
+ if(!complete(cookies)){log('matched SF; required fields missing');return done();}
+ log('matched SF; required fields present');
+ const fp=hash(sf.names.map(k=>k+'='+cookies[k]).join('\0'));
+ const last=get('sent_sf').split('|');
+ if(last[0]===fp&&Date.now()-Number(last[1]||0)<1800000){log('skipped: recently sent');return done();}
+ const payload={service:'sf',url:'https://'+sf.host+m[2],captured_at:Date.now(),cookies};
+ log('submitting allowlisted fields to gateway');
+ $task.fetch({url:server+'/api/v1/capture',method:'POST',
+  headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+  body:JSON.stringify(payload),opts:{policy:'direct'}}).then(r=>{
+   const code=Number(r.statusCode||r.status||0);log('gateway HTTP '+code);
+   let body={};try{body=JSON.parse(r.body||'{}');}catch(e){log('response JSON invalid');}
+   if(code===200&&['synced','unchanged','dry_run'].includes(body.status)){
+    if(body.status!=='dry_run')put('sent_sf',fp+'|'+Date.now());
+    put('armed','0');
+    note('顺丰 '+body.status,body.status==='dry_run'?'测试捕获成功，青龙未修改':'接收确认，已关闭采集');
+   }else note('网关拒绝','HTTP '+code+'；旧青龙值保持不变');
+   done();
+ }).catch(()=>{note('上传失败','HTTPS 连接失败；未修改青龙');done();});
+}
+try{main();}catch(e){log('script exception; details withheld');done();}
