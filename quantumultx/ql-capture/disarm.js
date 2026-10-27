@@ -1,0 +1,1 @@
+$prefs.setValueForKey('0','qlcap_v1_armed');if(typeof $notify==='function')$notify('青龙采集中心','采集已关闭','不会再上传指定请求的字段');$done({});
