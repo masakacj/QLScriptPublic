@@ -1,9 +1,10 @@
 /* Quantumult X online status / diagnostics. Read-only, never uploads cookies. */
 'use strict';
+const VERSION='1.1.0';
 const P='qlcap_v1_';
 function read(k){return $prefs.valueForKey(P+k)||'';}
 function done(){$done({});}
-function alert(title,msg){if(typeof $notify==='function')$notify('青龙采集中心',title,msg);}
+function alert(title,msg){if(typeof $notify==='function')$notify('青龙采集中心 v'+VERSION,title,msg);}
 try{
   const server=read('url').replace(/\/+$/,'');
   const token=read('token');
