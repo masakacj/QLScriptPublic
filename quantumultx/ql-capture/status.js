@@ -1,6 +1,6 @@
 /* QX manual status diagnostic - no credentials or cookie values in logs. */
 'use strict';
-const VERSION='1.2.0', P='qlcap_v1_';
+const VERSION='1.3.0', P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Status v'+VERSION+'] '+x);}
 function note(title,msg){log(title+' / '+msg);if(typeof $notify==='function')$notify('青龙采集 v'+VERSION,title,msg);}
 function read(k){return $prefs.valueForKey(P+k)||'';}
