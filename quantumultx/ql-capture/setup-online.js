@@ -4,7 +4,7 @@
  * The URL fragment is not transmitted in the GitHub HTTP request.
  */
 'use strict';
-const VERSION='1.1.2';
+const VERSION='1.3.0';
 const P='qlcap_v1_';
 const SERVER='https://qlcap.781751.xyz:58443';
 function value(k){return $prefs.valueForKey(P+k)||'';}
@@ -55,8 +55,8 @@ try{
       check(SERVER,candidate,(data)=>{
         store('url',SERVER);
         store('token',candidate);
-        store('armed','0');
-        notify('初始化成功',data.dry_run?'连接已验证 · 测试模式。请立即从任务 URL 删除 #token=...':'连接已验证 · 正式模式。请立即从任务 URL 删除 #token=...');
+        store('armed','1');
+        notify('初始化成功',data.dry_run?'持续采集已开启 · 测试模式。请立即从任务 URL 删除 #token=...':'持续采集已开启 · 正式模式。请立即从任务 URL 删除 #token=...');
       });
     }
   } else if(value('token')&&value('url')) {
