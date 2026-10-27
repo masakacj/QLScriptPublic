@@ -28,7 +28,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
 (async()=>{
   let x=await run('setup');assert.equal(x.calls,0);assert(x.notifications.join(' ').includes('需要初始化'));
   x=await run('setup',{fragment:'#token='+TOKEN});
-  assert.equal(x.calls,1);assert.equal(x.data.qlcap_v1_token,TOKEN);assert.equal(x.data.qlcap_v1_url,'https://qlcap.781751.xyz:58443');assert.equal(x.data.qlcap_v1_armed,'0');assert(x.notifications.join(' ').includes('初始化成功'));assert(!x.notifications.join(' ').includes(TOKEN));
+  assert.equal(x.calls,1);assert.equal(x.data.qlcap_v1_token,TOKEN);assert.equal(x.data.qlcap_v1_url,'https://qlcap.781751.xyz:58443');assert.equal(x.data.qlcap_v1_armed,'1');assert(x.notifications.join(' ').includes('初始化成功'));assert(!x.notifications.join(' ').includes(TOKEN));
   const old={'qlcap_v1_token':'OLD'.repeat(16),'qlcap_v1_url':'https://qlcap.781751.xyz:58443','qlcap_v1_armed':'1'};
   x=await run('setup',{fragment:'#token='+TOKEN,prefs:old,answer:{statusCode:401,body:'{"error":"unauthorized"}'}});
   assert.equal(x.data.qlcap_v1_token,old.qlcap_v1_token);assert.equal(x.data.qlcap_v1_armed,'1');
