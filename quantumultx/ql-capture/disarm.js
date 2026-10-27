@@ -1,7 +1,7 @@
 /* QX manual disarm; never logs secrets. */
 'use strict';
 const V='1.2.0';
-function log(x){if(typeof console!=='undefined'&&console.log('[QL Disarm v'+V+'] '+x);}
+function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Disarm v'+V+'] '+x);}
 try{
  log('start');
  const ok=$prefs.setValueForKey('0','qlcap_v1_armed');
