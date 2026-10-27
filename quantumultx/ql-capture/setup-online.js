@@ -4,13 +4,13 @@
  * The URL fragment is not transmitted in the GitHub HTTP request.
  */
 'use strict';
-const VERSION='1.1.0';
+const VERSION='1.1.1';
 const P='qlcap_v1_';
 const SERVER='https://qlcap.781751.xyz:58443';
 function value(k){return $prefs.valueForKey(P+k)||'';}
 function store(k,v){return $prefs.setValueForKey(String(v),P+k);}
 function notify(title,body){if(typeof $notify==='function')$notify('青龙采集中心 v'+VERSION,title,body);}
-function finish(){$done({});}
+function finish(){if(typeof $done==='function')$done({});}
 function parameter(name) {
   const source=typeof $environment!=='undefined'&&$environment&&$environment.sourcePath||'';
   const index=source.indexOf('#');
@@ -45,6 +45,7 @@ function check(url,token,whenOK){
   });
 }
 try{
+  notify('脚本已启动','开始检查初始化状态；如果没有密钥，会提示下一步操作');
   const candidate=parameter('token').trim();
   if(candidate) {
     if(!/^[A-Za-z0-9_-]{32,256}$/.test(candidate)) {
