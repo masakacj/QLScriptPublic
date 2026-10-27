@@ -1,69 +1,74 @@
-# 通用青龙 Cookie 采集（Quantumult X）
+# 通用青龙 Cookie 采集中心 · Quantumult X
 
-**当前状态（2026-10-27）**：服务端已在家庭 Portainer 的 `ql-capture-gateway` Stack（ID 45）启动，容器健康状态 `healthy`；公网 HTTPS 已通过实际请求验证：
+> 状态（2026-10-27）：127 Portainer 的 `ql-capture-gateway` Stack（ID 45）已上线；公网 HTTPS 端到端验收通过。当前 **`DRY_RUN=true`，绝不更新青龙**。233 青龙已有专用 `envs` API 应用，但尚未填入 Portainer Stack 的 `QL_CLIENT_ID`、`QL_CLIENT_SECRET`。真实 iPhone 顺丰会话未完成实机验收。
 
-- 服务地址：`https://qlcap.781751.xyz:58443`
-- [健康检查](https://qlcap.781751.xyz:58443/health) 返回 HTTP 200。
-- 已验证未授权访问返回 401、合法模拟 Cookie 返回 `dry_run`、来源域名不在白名单时返回 400。
-- **仍处于 `DRY_RUN=true`，不修改青龙。** 青龙已建立 `envs` 专用 API 应用，但其凭据尚未填入 Portainer Stack。真实顺丰 Cookie 尚未通过 iPhone 实测，也尚未建立正式业务接口有效性校验。不要擅自关闭 DRY_RUN。
+- 网关：`https://qlcap.781751.xyz:58443`
+- [健康检查](https://qlcap.781751.xyz:58443/health)
+- 在线脚本版本：`v1.1.0`（在初始化/诊断通知中显示）
+- 源码目录：`quantumultx/ql-capture/`
+- **仅在本机配置 CAPTURE_TOKEN，不要上传 GitHub，也不要发送到公开聊天。**
 
-## 1. 安装远程重写规则
+## 1. 重写和 HTTPS 解密（已配置可跳过）
 
-在 iPhone 的 Quantumult X 中：
-
-1. 开启 QX VPN/Tunnel。若还没有配置过 HTTPS 解密，请在「设置 → MitM/HTTPS 解密」生成/安装并于 iOS「设置 → 通用 → 关于本机 → 证书信任设置」信任 **QX 自己生成的证书**。
-2. 在「设置 → 重写 → 资源/引用」添加下面 **rewrite.conf** 的 Raw 地址，标签可用「青龙凭证采集」，资源解析器关闭（`opt-parser=false`），开启此资源。
-3. 确认 `mcs-mimp-web.sf-express.com` 已出现在 MitM 主机名列表；不要启用所有域名的解密。
-
-远程重写地址：
+打开 Quantumult X → 设置 → 重写 → 资源，添加远程 Rewrite：
 
 ```text
 https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/rewrite.conf
 ```
 
-如果使用配置文件编辑器，也可以在现有的 `[rewrite_remote]` 下增加：
+启用 QX Tunnel/VPN、重写、MitM；安装并信任 **QX 自己生成的证书**。解密域名只需 `mcs-mimp-web.sf-express.com`，不使用全局 MitM。此域名的实际请求是否可被 QX 捕获取决于 iOS、小程序流量和其网络实现。
+
+## 2. 全在线的交互任务（不需要在手机保存 JS 文件）
+
+在 QX「设置 → 工具与分析 → HTTP 请求」添加以下 4 个**交互任务**，或者把这些行加入现有配置的 **`[task_local]`** 分区（不要重复添加分区头）：
 
 ```ini
-https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/rewrite.conf, tag=青龙凭证采集, update-interval=86400, opt-parser=false, enabled=true
+[task_local]
+event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/setup-online.js, tag=青龙采集初始化, enabled=true
+event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/status.js, tag=青龙采集状态, enabled=true
+event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/arm.js, tag=青龙开启采集, enabled=true
+event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/disarm.js, tag=青龙关闭采集, enabled=true
 ```
 
-**注意**：`rewrite.conf` 是远程重写资源，不应拿来覆盖原 QX 完整配置，也不要把 `capture.js` 链接直接添加为重写资源。
+远程脚本由 GitHub Raw 获取。首页长按策略节点（或从 HTTP 请求任务列表手动运行）唤起交互操作。运行交互任务时要开启 QX Tunnel 和任务功能。
 
-## 2. 本机一次性初始化（接收服务已上线）
+### 只需一次的密钥初始化
 
-公开 `setup.js` 文件只是模板，**不能直接远程运行**（里面没有你的私有域名和密钥）。
+首先在自己的 Portainer 打开 `Stacks → ql-capture-gateway → Environment variables`，获取 `CAPTURE_TOKEN`。**它不是 Portainer Token，也不是青龙 Client Secret。**
 
-- 将 [setup.js](./setup.js) 复制到 iPhone 的 `Quantumult X/Scripts` 中，本地编辑 `SERVER_URL` 和 `CAPTURE_TOKEN`。填写 `SERVER_URL='https://qlcap.781751.xyz:58443'`；`CAPTURE_TOKEN` 需从 **Portainer 的 ql-capture-gateway Stack → Environment variables** 获取（长度至少 32 字符）。不要使用 Portainer API Token 代替它。
-- 在 QX「HTTP 请求」中创建指向该 **本地文件** 的脚本任务并手动运行一次，看到「配置已保存」提示。
-- 千万不要把填写密钥后的本地文件提交至公开 GitHub；`capture.js`、`rewrite.conf` 不需要密钥修改。
+临时把「青龙采集初始化」的脚本地址改成（把示例字段替换为真正的 `CAPTURE_TOKEN`）：
 
-## 3. 每次手动捕获
-
-把 `arm.js`、`disarm.js` 的 Raw 链接添加到 QX「HTTP 请求」作为可手动执行的脚本任务。QX 通常可通过任务左滑执行（UI 版本不同）；不需要安排每日定时开启采集。
-
-开启：
-```text
-https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/arm.js
-```
-关闭：
-```text
-https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/disarm.js
+```ini
+event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/setup-online.js#token=你的CAPTURE_TOKEN, tag=青龙采集初始化, enabled=true
 ```
 
-使用顺序：手动运行 `arm.js` → 在已登录的顺丰小程序或官方积分 H5 打开会员积分/签到页 → QX 检查符合白名单的请求 → 将**仅三个字段** `sessionId`、`_login_mobile_`、`_login_user_id_` 传至你自己的网关 → 网关验证并返回回执 → 成功后自动关闭采集。可手动运行 `disarm.js` 随时中止。自动关闭仅发生在网关返回明确的成功/测试回执时。
+执行一次，看到 **「初始化成功」** 后，**立刻编辑任务把 `#token=...` 删掉**，恢复本节第一个示例中的无参数 URL。
 
-## 4. 验收与排错
+- QX 会从 `$environment.sourcePath` 读取 `#token=`，在线脚本先检查网关鉴权；确认成功后才将服务地址、密钥保存到 QX 的 `$prefs`，并关闭本轮采集。鉴权失败不会覆盖旧配置。
+- URL 片段（`#...`）不会发到 GitHub HTTP 服务，但在你**删掉之前**会保留在 QX 任务配置中，可能随 QX 设置同步到 iCloud；完成后请立即移除。
+- 后续更新或重新运行在线初始化脚本时，如果没有 `#token=`，则**只检查现有配置**，不要求再次输入密钥。
+- 不要把带有 `#token=` 的 URL 粘贴到聊天、Issue、日志或 GitHub。
 
-- QX 规则命中，不代表登录凭据一定有效；小程序可能不经 QX 隧道，或者不允许解密。
-- `https://ucmp.sf-express.com/v1/we/cx3.0/mine` 只涉及 **ucmp** 域名时不触发本脚本。需从会员中心进入实际的 `mcs-mimp-web.sf-express.com` 会员积分接口。
-- 只有看到网关返回 `synced` 或 `unchanged`，并在青龙查看 `sfsyUrl` 对应记录的更新时间，才算完成写入。初期 `dry_run` 不修改青龙。
-- 真正验证 Cookie 应读取顺丰会员业务接口返回，而非仅检查是否包含手机号字段。失效时不得覆盖青龙旧变量，不得将任务误记成功。
-- 不要通过截图、日志、Issue、Bark 通知暴露 Cookie、手机号全值、青龙密钥。
+旧的 [setup.js](./setup.js) 本地模板保留给离线用户。**现在推荐使用 [setup-online.js](./setup-online.js)**。
 
-## 在线更新
+## 3. 平时怎么用
 
-QX 的 Rewrite 远程资源通过 GitHub Raw 自动更新（这里配置为 24 小时），也可以在资源页面手动刷新。脚本原始文件放在 `quantumultx/ql-capture/`；新增平台应以**明确的域名、路径、字段白名单**实现，禁止捕获全站/任意域名的完整 Cookie。
+1. 执行「青龙采集状态」：验证服务连通、是否 `DRY_RUN`、本次采集是否开启。
+2. 执行「青龙开启采集」：QX 会将一次性开关置为启用。
+3. 打开已登录的顺丰小程序 / 积分 H5，访问积分或签到页面。只有请求经过 QX、命中 `mcs-mimp-web.sf-express.com` 且带齐三个字段（`sessionId`、`_login_mobile_`、`_login_user_id_`）时，才会提交到你自己的网关。
+4. 收到「测试捕获成功」通知后可执行状态脚本复查；未完成时可执行「青龙关闭采集」。
 
-**服务端运维**：接收容器位于 Portainer Stack `ql-capture-gateway`，HTTPS 复用现有 Nginx Proxy Manager 网络及 58443 入口，使用独立的 NPM 自定义 vhost 配置（不在 NPM 常规 Proxy Hosts 页面显示）。Stack 的 `DRY_RUN` 与其他密钥均应仅在 Portainer 私有界面管理。正式写入前应完成 QL API 客户端凭据配置、真实顺丰会话有效性校验、过期会话不覆盖旧 Cookie 的验收和 iPhone 实机测试。
+**当前测试模式不会更改青龙。** 即使 QX 提示测试捕获成功，也只代表抓到必要字段并通过网关格式校验，**不代表顺丰会话真实有效**。未完成真实业务接口校验和青龙凭据配置前，不要关闭 `DRY_RUN`。
 
-此项目仅供本人合法授权的账号使用；顺丰真实抓取及网关正式写入尚未在 iPhone 实机验证。
+## 4. 在线版本更新和排错
+
+- 后续修改 `setup-online.js`、`status.js`、`arm.js`、`disarm.js`、`capture.js`，只需推送 GitHub；**手机不必重建本地 JS 文件**。
+- QX 有脚本缓存。更新后在「HTTP 请求」刷新相应脚本，或者在 QX 资源更新界面刷新脚本缓存；Rewrite 资源也可单独刷新。在线初始化和状态脚本的通知标题会显示版本号，例如 `v1.1.0`。
+- 「青龙采集状态」可区分：未配置、401 密钥错误、HTTPS 不通、正常 `DRY_RUN`、正式模式等，不输出 Token 或 Cookie。
+- QX 已配置成功但捕不到顺丰：检查 MitM 证书信任、重写是否启用、请求是否进入 QX VPN，以及实际请求域名。仅打开 `ucmp.sf-express.com/v1/we/cx3.0/mine` **不会**触发当前顺丰规则。
+- 接收网关只允许经 HTTPS 上报明确白名单字段，不捕获整个域名的所有 Cookie；添加其他平台需增加显式白名单，不要使用通配来源。
+- [网关健康检查](https://qlcap.781751.xyz:58443/health) 返回 HTTP 200 仅代表程序在线，不代表凭据已有效或可正式写入青龙。
+
+## 服务端运维
+
+Portainer（127）Stack `ql-capture-gateway`、青龙（233）独立 `envs` 应用。HTTPS 使用已有 NPM 的 `*.781751.xyz` 证书和宿主端口 58443；当前 NPM 路由是自定义 vhost（不显示在普通 Proxy Hosts 列表）。不可把 Portainer 或 QingLong 凭据放到公开仓库。
