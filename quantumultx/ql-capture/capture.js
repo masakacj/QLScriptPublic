@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.3.0',P='qlcap_v1_';
+const V='1.3.1',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -45,6 +45,7 @@ function main(){
    if(code===200&&['synced','unchanged','dry_run'].includes(body.status)){
     put('sent_sf',fp+'|'+Date.now());
     if(body.status==='dry_run')note('顺丰 Cookie 获取成功','测试模式 · 已收到凭证，未写入青龙');
+    else if(body.rerun==='queued')note('顺丰 Cookie 已刷新','青龙过期任务已补跑一次，等待执行结果');
     else if(body.status==='synced')note('顺丰 Cookie 同步成功','已更新青龙对应账号');
     else note('顺丰 Cookie 已是最新','青龙无需更新');
    }else note('网关拒绝','HTTP '+code+'；旧青龙值保持不变');
