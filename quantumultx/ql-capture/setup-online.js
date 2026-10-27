@@ -4,11 +4,12 @@
  * The URL fragment is not transmitted in the GitHub HTTP request.
  */
 'use strict';
+const VERSION='1.1.0';
 const P='qlcap_v1_';
 const SERVER='https://qlcap.781751.xyz:58443';
 function value(k){return $prefs.valueForKey(P+k)||'';}
 function store(k,v){return $prefs.setValueForKey(String(v),P+k);}
-function notify(title,body){if(typeof $notify==='function')$notify('青龙采集中心',title,body);}
+function notify(title,body){if(typeof $notify==='function')$notify('青龙采集中心 v'+VERSION,title,body);}
 function finish(){$done({});}
 function parameter(name) {
   const source=typeof $environment!=='undefined'&&$environment&&$environment.sourcePath||'';
