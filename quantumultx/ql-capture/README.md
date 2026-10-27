@@ -64,6 +64,7 @@ event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main
 
 - 后续修改 `setup-online.js`、`status.js`、`arm.js`、`disarm.js`、`capture.js`，只需推送 GitHub；**手机不必重建本地 JS 文件**。
 - QX 有脚本缓存。更新后在「HTTP 请求」刷新相应脚本，或者在 QX 资源更新界面刷新脚本缓存；Rewrite 资源也可单独刷新。在线初始化和状态脚本的通知标题会显示版本号，例如 `v1.1.0`。
+- GitHub 新增了 [QX Cookie Capture Tests](../../../.github/workflows/qx-capture-tests.yml) 自动检查：每次修改该目录的 JS，检查语法并执行 8 项模拟 QX 交互测试。也可用 Node.js 本地执行 `node quantumultx/ql-capture/test.cjs`。该测试不含真实密钥，不代替 iPhone 实机测试。
 - 「青龙采集状态」可区分：未配置、401 密钥错误、HTTPS 不通、正常 `DRY_RUN`、正式模式等，不输出 Token 或 Cookie。
 - QX 已配置成功但捕不到顺丰：检查 MitM 证书信任、重写是否启用、请求是否进入 QX VPN，以及实际请求域名。仅打开 `ucmp.sf-express.com/v1/we/cx3.0/mine` **不会**触发当前顺丰规则。
 - 接收网关只允许经 HTTPS 上报明确白名单字段，不捕获整个域名的所有 Cookie；添加其他平台需增加显式白名单，不要使用通配来源。
