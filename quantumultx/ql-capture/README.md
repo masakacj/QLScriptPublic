@@ -1,6 +1,11 @@
 # 通用青龙 Cookie 采集（Quantumult X）
 
-**当前状态**：QX 在线脚本已发布；配套接收网关和 HTTPS 域名尚未在 233 验收。仅导入 QX 规则并不能更新青龙。首次真实使用前，先确认自建网关 `/health` 正常，且在 `DRY_RUN` 模式下完成测试。
+**当前状态（2026-10-27）**：服务端已在家庭 Portainer 的 `ql-capture-gateway` Stack（ID 45）启动，容器健康状态 `healthy`；公网 HTTPS 已通过实际请求验证：
+
+- 服务地址：`https://qlcap.781751.xyz:58443`
+- [健康检查](https://qlcap.781751.xyz:58443/health) 返回 HTTP 200。
+- 已验证未授权访问返回 401、合法模拟 Cookie 返回 `dry_run`、来源域名不在白名单时返回 400。
+- **仍处于 `DRY_RUN=true`，不修改青龙。** 青龙已建立 `envs` 专用 API 应用，但其凭据尚未填入 Portainer Stack。真实顺丰 Cookie 尚未通过 iPhone 实测，也尚未建立正式业务接口有效性校验。不要擅自关闭 DRY_RUN。
 
 ## 1. 安装远程重写规则
 
@@ -24,11 +29,11 @@ https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-ca
 
 **注意**：`rewrite.conf` 是远程重写资源，不应拿来覆盖原 QX 完整配置，也不要把 `capture.js` 链接直接添加为重写资源。
 
-## 2. 本机一次性初始化（网关上线后）
+## 2. 本机一次性初始化（接收服务已上线）
 
 公开 `setup.js` 文件只是模板，**不能直接远程运行**（里面没有你的私有域名和密钥）。
 
-- 将 [setup.js](./setup.js) 复制到 iPhone 的 `Quantumult X/Scripts` 中，本地编辑 `SERVER_URL` 和 `CAPTURE_TOKEN`。例如 `SERVER_URL='https://你的域名:58443'`；实际域名和随机密钥必须以服务端配置为准。
+- 将 [setup.js](./setup.js) 复制到 iPhone 的 `Quantumult X/Scripts` 中，本地编辑 `SERVER_URL` 和 `CAPTURE_TOKEN`。填写 `SERVER_URL='https://qlcap.781751.xyz:58443'`；`CAPTURE_TOKEN` 需从 **Portainer 的 ql-capture-gateway Stack → Environment variables** 获取（长度至少 32 字符）。不要使用 Portainer API Token 代替它。
 - 在 QX「HTTP 请求」中创建指向该 **本地文件** 的脚本任务并手动运行一次，看到「配置已保存」提示。
 - 千万不要把填写密钥后的本地文件提交至公开 GitHub；`capture.js`、`rewrite.conf` 不需要密钥修改。
 
@@ -59,4 +64,6 @@ https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-ca
 
 QX 的 Rewrite 远程资源通过 GitHub Raw 自动更新（这里配置为 24 小时），也可以在资源页面手动刷新。脚本原始文件放在 `quantumultx/ql-capture/`；新增平台应以**明确的域名、路径、字段白名单**实现，禁止捕获全站/任意域名的完整 Cookie。
 
-此项目仅供本人合法授权的账号使用；顺丰真实抓取及网关写入尚未在 iPhone 实机验证。
+**服务端运维**：接收容器位于 Portainer Stack `ql-capture-gateway`，HTTPS 复用现有 Nginx Proxy Manager 网络及 58443 入口，使用独立的 NPM 自定义 vhost 配置（不在 NPM 常规 Proxy Hosts 页面显示）。Stack 的 `DRY_RUN` 与其他密钥均应仅在 Portainer 私有界面管理。正式写入前应完成 QL API 客户端凭据配置、真实顺丰会话有效性校验、过期会话不覆盖旧 Cookie 的验收和 iPhone 实机测试。
+
+此项目仅供本人合法授权的账号使用；顺丰真实抓取及网关正式写入尚未在 iPhone 实机验证。
