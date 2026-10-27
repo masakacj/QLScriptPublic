@@ -1,6 +1,6 @@
 /* QX manual disarm; never logs secrets. */
 'use strict';
-const V='1.2.0';
+const V='1.3.0';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Disarm v'+V+'] '+x);}
 try{
  log('start');
