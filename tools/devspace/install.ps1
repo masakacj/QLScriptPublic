@@ -24,25 +24,46 @@ if (-not $CheckOnly -and $Mode -eq 'Boot') {
         throw 'Boot mode needs an interactive local PowerShell for one-time Windows account credential input.'
     }
 }
+$rawUri = 'https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/tools/devspace/devspace-managed.ps1'
 $apiUri = 'https://api.github.com/repos/masakacj/QLScriptPublic/contents/tools/devspace/devspace-managed.ps1?ref=main'
+$cdnUri = 'https://cdn.jsdelivr.net/gh/masakacj/QLScriptPublic@main/tools/devspace/devspace-managed.ps1'
 $expectedSha256 = '9C530C78B1A21C0C8EE7E021F66299FFBDA5AC518C7B5B57E61EB49F4D6F45F2'
 $dir = Join-Path $env:TEMP ('devspace-online-' + [guid]::NewGuid().ToString('n'))
 $script = Join-Path $dir 'devspace-managed.ps1'
 New-Item -ItemType Directory -Path $dir -Force | Out-Null
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-    # GitHub's public contents API works on networks that time out against raw.githubusercontent.com.
-    $response = Invoke-WebRequest -UseBasicParsing -Uri $apiUri -Headers @{'User-Agent'='DevSpace-Managed-Installer'} -TimeoutSec 30
-    $entry = $response.Content | ConvertFrom-Json
-    if ($entry.encoding -ne 'base64' -or -not $entry.content) { throw 'Unexpected GitHub file response.' }
-    [IO.File]::WriteAllBytes($script, [Convert]::FromBase64String(($entry.content -replace '\s', '')))
-    # Windows PowerShell installations with disabled modules may lack Get-FileHash.
-    $sha256 = [Security.Cryptography.SHA256]::Create()
-    try { $actual = ([BitConverter]::ToString($sha256.ComputeHash([IO.File]::ReadAllBytes($script)))).Replace('-','') }
-    finally { $sha256.Dispose() }
-    if ($actual -ine $expectedSha256) {
-        throw "Downloaded DevSpace manager hash mismatch. Expected $expectedSha256, got $actual. No services changed."
+    # Try the raw GitHub endpoint first (common on office networks), then GitHub
+    # Contents API (works on home network), with jsDelivr as a last read-only mirror.
+    # Every source must pass the exact SHA-256 pin before it is executed.
+    $sources = @(
+        @{ Name='GitHub raw'; Uri=$rawUri; Kind='file'; Seconds=8 },
+        @{ Name='GitHub API'; Uri=$apiUri; Kind='api'; Seconds=20 },
+        @{ Name='jsDelivr'; Uri=$cdnUri; Kind='file'; Seconds=15 }
+    )
+    $verified = $false
+    foreach ($source in $sources) {
+        try {
+            if ($source.Kind -eq 'api') {
+                $response = Invoke-WebRequest -UseBasicParsing -Uri $source.Uri -Headers @{'User-Agent'='DevSpace-Managed-Installer'} -TimeoutSec $source.Seconds
+                $entry = $response.Content | ConvertFrom-Json
+                if ($entry.encoding -ne 'base64' -or -not $entry.content) { throw 'Unexpected API response.' }
+                [IO.File]::WriteAllBytes($script, [Convert]::FromBase64String(($entry.content -replace '\s', '')))
+            } else {
+                Invoke-WebRequest -UseBasicParsing -Uri $source.Uri -OutFile $script -TimeoutSec $source.Seconds -MaximumRedirection 3
+            }
+            $sha256 = [Security.Cryptography.SHA256]::Create()
+            try { $actual = ([BitConverter]::ToString($sha256.ComputeHash([IO.File]::ReadAllBytes($script)))).Replace('-','') }
+            finally { $sha256.Dispose() }
+            if ($actual -ine $expectedSha256) { throw ('File hash mismatch from ' + $source.Name) }
+            $verified = $true
+            Write-Host ('Source verified: ' + $source.Name)
+            break
+        } catch {
+            Write-Warning ($source.Name + ' not usable: ' + $_.Exception.GetType().Name)
+        }
     }
+    if (-not $verified) { throw 'All download sources failed or did not match the pinned SHA256. No services changed.' }
     Write-Host ('DevSpace manager verified (SHA256). Running as ' + $identity.Name)
     & $script -Action Plan -Mode $Mode
     if (-not $CheckOnly) {
