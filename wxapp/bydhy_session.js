@@ -90,7 +90,8 @@ function parseAccount(raw) {
 }
 
 function headers() {
-  const nonce = crypto.randomBytes(16).toString("base64url").slice(0, 16);
+  const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const nonce = Array.from({ length: 16 }, () => chars[crypto.randomInt(chars.length)]).join("");
   const curtime = String(Math.floor(Date.now() / 1000));
   return {
     "Content-Type": "application/json",
@@ -157,7 +158,14 @@ async function sign(sessionId, request) {
     validateStatus: () => true,
     transformRequest: [(data) => data],
   });
+  if ([401, 403].includes(response.status)) {
+    return { status: "expired", text: "⚠️ session_id 已失效或未授权，需重新抓取" };
+  }
   if (response.status >= 400) {
+    try {
+      const detail = classifyResponse(decodeResponse(response.data));
+      if (detail.status === "expired" || detail.status === "upgrade") return detail;
+    } catch (_err) {}
     return { status: "failed", text: "❌ 签到接口 HTTP " + response.status };
   }
   return classifyResponse(decodeResponse(response.data));
@@ -180,7 +188,9 @@ async function main() {
         $.log(prefix + (account.remark ? "[" + account.remark + "] " : " ") + result.text);
       } catch (err) {
         // 不能在日志/通知中输出响应原文或凭据。
-        $.log(prefix + " 执行失败：" + (err.code || "请求或凭据解析错误"));
+        const safe = /^(加密响应格式错误|无法解密登录响应|加密响应解密后不是有效 JSON|JSON 凭据格式无效|未取得有效 session_id)/.test(String(err.message || ""))
+          ? err.message : (err.code || "网络请求或响应解析失败");
+        $.log(prefix + " 执行失败：" + safe);
       }
       if (i < $.userList.length - 1) await $.wait(1500, 3000);
     }
