@@ -9,7 +9,7 @@ function log(message){if(typeof console!=="undefined"&&console.log)console.log("
 function finish(){ $done({}); }
 function note(title,text){if(typeof $notify==="function")$notify("比亚迪海洋采集",title,text);}
 function main(){
-  if(($prefs.valueForKey(P+"armed")||"")!=="1"){log("capture not armed");return finish();}
+  if(($prefs.valueForKey(P+"bydhy_armed")||"")!=="1"){log("BYD capture not armed");return finish();}
   const url=String(($request&&$request.url)||"");
   if(!/^https:\/\/mina\.bydoceanauto\.com\/\?service=mina\.decryptCode(?:&|$)/i.test(url)){return finish();}
   const method=String(($request&&$request.method)||"").toUpperCase();
