@@ -205,8 +205,10 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   console.log('PASS QX four-phase HTTP capture, exact-domain/TTL gating, unchanged bodies, safe notifications');
   // Existing QL Arm must only enable 10m debug when the server has explicitly armed it.
   const armScript=fs.readFileSync(__dirname+'/arm.js','utf8');
-  async function armWith(configResponse,activationResponse=null){
-   const prefs={'qlcap_v1_token':TOKEN,'qlcap_v1_url':'https://qlcap.781751.xyz:58443'};
+  const LOCAL_LOGIN_B64=Buffer.from('SIMULATED_LOCAL_ENCRYPTED_LOGIN_NOT_REAL').toString('base64');
+  async function armWith(configResponse,activationResponse=null,saved=''){
+   const prefs={'qlcap_v1_token':TOKEN,'qlcap_v1_url':'https://qlcap.781751.xyz:58443',
+    'qlcap_v1_bydhy_enc':saved};
    const notifications=[],calls=[];let finish;
    const completion=new Promise(resolve=>finish=resolve);
    vm.runInNewContext(armScript,{
@@ -224,6 +226,15 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
       if(!activationResponse)throw Error('Unexpected activation request');
       return activationResponse;
      }
+     if(x.url.endsWith('/trace/v1/ingest')){
+      assert.equal(x.method,'POST');
+      const record=JSON.parse(x.body);
+      assert.equal(record.origin,'qx-prefs-login');
+      assert.equal(record.stage,'response_body');
+      assert.equal(record.url,'https://mina.bydoceanauto.com/?service=mina.decryptCode');
+      assert.equal(record.body,LOCAL_LOGIN_B64);
+      return {statusCode:200,body:'{"accepted":true}'};
+     }
      throw Error('Unexpected QX outbound request');
     }},
     $notify:(...args)=>notifications.push(args.join(' ')),
@@ -232,20 +243,25 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
    await Promise.race([completion,new Promise((_,rej)=>setTimeout(()=>rej(Error('arm not done')),1000))]);
    return {prefs,notifications,calls};
   }
-  let arm=await armWith({statusCode:200,body:'{"active":true,"host":"mina.bydoceanauto.com","remaining_seconds":480}'});
-  assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
-  assert(arm.notifications.join(' ').includes('深度诊断'));
-  assert.equal(arm.calls.length,1);
+  let arm=await armWith({statusCode:200,body:'{"active":true,"host":"mina.bydoceanauto.com","remaining_seconds":480}'},null,LOCAL_LOGIN_B64);
+  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
+  assert(arm.notifications.join(' ').includes('加密登录信息已安全提交'));
+  assert.equal(arm.calls.length,2);
+  assert(arm.prefs.qlcap_v1_bydhy_transfer_at);
   arm=await armWith({statusCode:200,body:'{"active":false,"prepared":false,"remaining_seconds":0}'});
   assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
   assert.equal(arm.calls.length,1);
   assert(!arm.notifications.join(' ').includes('深度诊断已开启'));
   const prep=JSON.stringify({active:false,prepared:true,prepared_host:'mina.bydoceanauto.com',prepared_remaining_seconds:3600});
   const activated=JSON.stringify({active:true,prepared:false,host:'mina.bydoceanauto.com',remaining_seconds:599});
+  arm=await armWith({statusCode:200,body:prep},{statusCode:200,body:activated},LOCAL_LOGIN_B64);
+  assert.equal(arm.calls.length,3);
+  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
+  assert(arm.notifications.join(' ').includes('加密登录信息已安全提交'));
   arm=await armWith({statusCode:200,body:prep},{statusCode:200,body:activated});
   assert.equal(arm.calls.length,2);
-  assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
-  assert(arm.notifications.join(' ').includes('深度诊断已开启'));
+  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
+  assert(arm.notifications.join(' ').includes('未找到本地比亚迪登录响应'));
   arm=await armWith({statusCode:200,body:prep},{statusCode:409,body:'{"error":"not prepared"}'});
   assert.equal(arm.calls.length,2);
   assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
