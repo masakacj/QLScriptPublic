@@ -26,4 +26,6 @@ jobs:
             node --check "$file"
           done
       - name: Test online initialization and status
-        run: node quantumultx/ql-capture/test.cjs
+        run: |
+          node quantumultx/ql-capture/test.cjs
+          node quantumultx/ql-capture/bydhy-capture.test.cjs
