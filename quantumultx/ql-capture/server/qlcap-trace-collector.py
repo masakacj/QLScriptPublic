@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qsl
 import hmac
+import hashlib
+from pathlib import Path
 import json
 import os
 import re
@@ -24,7 +26,8 @@ import urllib.request
 PORT = int(os.environ.get("TRACE_PORT", "18762"))
 CAPTURE_TOKEN = os.environ.get("TRACE_CAPTURE_TOKEN", "")
 ADMIN_TOKEN = os.environ.get("TRACE_ADMIN_TOKEN", "")
-ALLOWED_HOSTS = frozenset({"mina.bydoceanauto.com"})
+EXPORT_SHA256 = Path("/srv/trace/export_auth.sha256")
+ALLOWED_HOSTS = frozenset({"mina.bydoceanauto.com", "wx.10086.cn"})
 MAX_EVENT_BYTES = 1200 * 1024
 MAX_BODY_CHARS = 1024 * 1024
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
@@ -197,6 +200,16 @@ class TraceState:
         with self.lock:
             if not self.active(): raise PermissionError("capture not armed")
             if parts.hostname != self.host: raise ValueError("hostname mismatch")
+            if parts.hostname=="wx.10086.cn":
+                if event.get("origin")!="qx-china-mobile" or stage!="request_headers":
+                    raise ValueError("China Mobile event must originate from scoped QX request-hook")
+                if parts.path!="/qwhdhub/api/mark/mark31/domark" or parts.query:
+                    raise ValueError("China Mobile URL not allowlisted")
+                if event.get("method")!="POST" or event.get("body") is not None:
+                    raise ValueError("China Mobile must be header-only POST")
+                h=event.get("headers") or {}
+                if set(h)!={"Cookie"} or not re.fullmatch(r"QWHD_SESSION_TOKEN=[^;\s]{12,4096}",h["Cookie"]):
+                    raise ValueError("Unexpected China Mobile Cookie fields")
             if len(self.events)>=MAX_EVENTS or self.total_bytes+size>MAX_TOTAL_BYTES: raise OverflowError("trace memory limit")
             self.events.append(event)
             self.total_bytes += size
@@ -254,6 +267,17 @@ class Handler(BaseHTTPRequestHandler):
     def is_admin(self):
         # Accessible only with separate admin token; NPM never proxies this path.
         return self.auth(ADMIN_TOKEN)
+    def is_private_export(self):
+        # Separate per-Debian credential. Only its SHA-256 digest is present on 127.
+        value=self.headers.get("Authorization","")
+        if not value.startswith("Bearer "):return False
+        token=value[7:]
+        if not (43<=len(token)<=128 and token.isascii()):return False
+        try:
+            stored=EXPORT_SHA256.read_text(encoding="ascii").strip()
+            if not re.fullmatch(r"[0-9a-f]{64}",stored):return False
+        except (OSError,ValueError):return False
+        return hmac.compare_digest(hashlib.sha256(token.encode("ascii")).hexdigest(),stored)
     def read_json(self):
         size=int(self.headers.get("Content-Length","0"))
         if not (0<size<=MAX_EVENT_BYTES):
@@ -262,6 +286,10 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(raw)
 
     def do_GET(self):
+        if self.path == "/_admin/export":
+            if not self.is_private_export():return self.reply(401,{"error":"unauthorized"})
+            # No raw values in logs, process title, or standard diagnostics.
+            return self.reply(200,{"events":state.raw()})
         if self.path == "/health":
             return self.reply(200,{"ok":True,"service":"qlcap-trace","version":"1.0"})
         if self.path == "/trace/v1/config":
@@ -327,7 +355,8 @@ def cli(args):
              "summary":("GET","/_admin/summary",None),
              "stop":("POST","/_admin/stop",{}),
              "arm":("POST","/_admin/arm",{"host":"mina.bydoceanauto.com","minutes":10}),
-             "prepare":("POST","/_admin/prepare",{"host":"mina.bydoceanauto.com","minutes":120})}
+             "prepare":("POST","/_admin/prepare",{"host":"mina.bydoceanauto.com","minutes":120}),
+             "prepare-mobile":("POST","/_admin/prepare",{"host":"wx.10086.cn","minutes":120})}
     if op not in allowed:raise SystemExit("unsupported action")
     method,path,data=allowed[op]
     raw=json.dumps(data).encode("utf-8") if data is not None else None

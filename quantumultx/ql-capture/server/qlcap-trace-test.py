@@ -2,6 +2,8 @@
 """No live traffic, credentials or external network required."""
 import importlib.util
 import json
+import hashlib
+import tempfile
 import pathlib
 import threading
 import time
@@ -108,6 +110,9 @@ class HttpTests(unittest.TestCase):
         m.state=m.TraceState()
         m.CAPTURE_TOKEN="T"*48
         m.ADMIN_TOKEN="A"*48
+        cls.export_dir=tempfile.TemporaryDirectory()
+        m.EXPORT_SHA256=pathlib.Path(cls.export_dir.name)/"export_auth.sha256"
+        m.EXPORT_SHA256.write_text(hashlib.sha256(("E"*48).encode()).hexdigest())
         cls.server=ThreadingHTTPServer(("127.0.0.1",0),m.Handler)
         cls.url=f"http://127.0.0.1:{cls.server.server_address[1]}"
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True)
@@ -116,6 +121,7 @@ class HttpTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        cls.export_dir.cleanup()
     def request(self,path,method="GET",token=None,doc=None):
         data=json.dumps(doc).encode() if doc is not None else None
         headers={"Content-Type":"application/json"}
@@ -156,6 +162,44 @@ class HttpTests(unittest.TestCase):
         self.assertFalse(info["prepared"])
         self.assertEqual(self.request("/trace/v1/activate","POST","T"*48,{"host":"mina.bydoceanauto.com"})[0],409)
         self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,EVENT)[0],200)
+        self.assertEqual(self.request("/_admin/stop","POST","A"*48,{})[0],200)
+
+    def test_private_full_raw_export_requires_separate_token(self):
+        self.request("/_admin/stop","POST","A"*48,{})
+        self.assertEqual(self.request("/_admin/export")[0],401)
+        self.assertEqual(self.request("/_admin/export",token="A"*48)[0],401)
+        self.assertEqual(self.request("/_admin/export",token="T"*48)[0],401)
+        self.request("/_admin/arm","POST","A"*48,{"host":"mina.bydoceanauto.com","minutes":1})
+        self.request("/trace/v1/ingest","POST","T"*48,EVENT)
+        code,data=self.request("/_admin/export",token="E"*48)
+        self.assertEqual(code,200)
+        self.assertEqual(data["events"][0]["headers"]["Cookie"],"PrivateSessionCookieForTest")
+        self.request("/_admin/stop","POST","A"*48,{})
+        self.assertEqual(self.request("/_admin/export",token="E"*48)[1]["events"],[])
+
+    def test_china_mobile_exact_cookie_and_scope(self):
+        self.request("/_admin/stop","POST","A"*48,{})
+        code,prepared=self.request("/_admin/prepare","POST","A"*48,
+            {"host":"wx.10086.cn","minutes":120})
+        self.assertEqual(code,200)
+        self.assertTrue(prepared["prepared"])
+        self.assertEqual(self.request("/trace/v1/activate","POST","T"*48,
+            {"host":"wx.10086.cn"})[0],200)
+        item={"v":1,"origin":"qx-china-mobile","stage":"request_headers",
+              "url":"https://wx.10086.cn/qwhdhub/api/mark/mark31/domark",
+              "method":"POST","session_index":"cmcc-1","at":123456,
+              "headers":{"Cookie":"QWHD_SESSION_TOKEN=SIMULATED_USER_COOKIE_TOKEN"}}
+        self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,item)[0],200)
+        self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,
+            dict(item,url="https://wx.10086.cn/private/api"))[0],400)
+        self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,
+            dict(item,headers={"Cookie":"QWHD_SESSION_TOKEN=SIMULATED_USER_COOKIE_TOKEN","Authorization":"bad"}))[0],400)
+        self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,
+            dict(item,headers={"Cookie":"foo=bar"}))[0],400)
+        self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,
+            dict(item,origin="other-script"))[0],400)
+        self.assertEqual(self.request("/trace/v1/ingest","POST","T"*48,
+            dict(item,url=URL))[0],400)
         self.assertEqual(self.request("/_admin/stop","POST","A"*48,{})[0],200)
 
     def test_cross_domain_bad_request(self):

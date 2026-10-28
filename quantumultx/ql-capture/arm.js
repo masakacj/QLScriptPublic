@@ -3,7 +3,7 @@
  * Without preparation, ordinary SF/BYD collection continues unchanged.
  */
 'use strict';
-const V='1.5.4',P='qlcap_v1_',TRACE_HOST='mina.bydoceanauto.com';
+const V='1.5.5',P='qlcap_v1_',TRACE_HOST='mina.bydoceanauto.com',MOBILE_HOST='wx.10086.cn';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Arm v'+V+'] '+x);}
 function notify(title,msg){if(typeof $notify==='function')$notify('青龙采集 v'+V,title,msg);}
 let finished=false;
@@ -23,7 +23,8 @@ function fetchJson(url,token,method,body){
 }
 function activateLocal(info){
  const seconds=Math.min(600,Math.floor(Number(info.remaining_seconds)||0));
- if(!info.active||info.host!==TRACE_HOST||seconds<=0)return false;
+ if(!info.active||(info.host!==TRACE_HOST&&info.host!==MOBILE_HOST)||seconds<=0)return false;
+ $prefs.setValueForKey(info.host,P+'trace_host');
  $prefs.setValueForKey(String(Date.now()+seconds*1000),P+'trace_until');
  $prefs.setValueForKey('0',P+'trace_sent_count');
  $prefs.setValueForKey('0',P+'trace_attempt_count');
@@ -31,7 +32,7 @@ function activateLocal(info){
  $prefs.setValueForKey('',P+'trace_last_sent');
  $prefs.setValueForKey('',P+'trace_last_attempt_at');
  $prefs.setValueForKey('未开始',P+'trace_last_result');
- notify('持续采集和深度诊断已开启','比亚迪 HTTP 请求/响应限时 '+seconds+' 秒；仅存受控服务器内存');
+ notify('持续采集和深度诊断已开启',(info.host===MOBILE_HOST?'中国移动 Cookie':'比亚迪 HTTP 请求/响应')+'采集限时 '+seconds+' 秒；仅存受控服务器内存');
  return true;
 }
 function uploadLocalLogin(url,token){
@@ -77,15 +78,16 @@ try{
    if(result.code!==200){
     return normal('普通采集已启用；诊断查询 HTTP '+result.code);
    }
-   if(info.active&&info.host===TRACE_HOST){
+   if(info.active&&(info.host===TRACE_HOST||info.host===MOBILE_HOST)){
     if(!activateLocal(info))return normal('诊断窗口已过期，普通采集不受影响');
-    return uploadLocalLogin(url,token);
+    return info.host===MOBILE_HOST?done():uploadLocalLogin(url,token);
    }
    // Private admin authorization alone cannot capture traffic: the user
    // must explicitly tap this QL Arm task before this activation is sent.
-   if(info.prepared&&info.prepared_host===TRACE_HOST&&Number(info.prepared_remaining_seconds)>0){
-    return fetchJson(url+'/trace/v1/activate',token,'POST',{host:TRACE_HOST}).then(r=>{
-     if(r.code===200&&activateLocal(r.data))return uploadLocalLogin(url,token);
+   if(info.prepared&&(info.prepared_host===TRACE_HOST||info.prepared_host===MOBILE_HOST)&&Number(info.prepared_remaining_seconds)>0){
+    const target=info.prepared_host;
+    return fetchJson(url+'/trace/v1/activate',token,'POST',{host:target}).then(r=>{
+     if(r.code===200&&activateLocal(r.data))return target===MOBILE_HOST?done():uploadLocalLogin(url,token);
      return normal('诊断启动未成功（HTTP '+r.code+'）；普通采集已启用');
     }).catch(()=>normal('诊断启动网络异常；普通采集已启用'));
    }
