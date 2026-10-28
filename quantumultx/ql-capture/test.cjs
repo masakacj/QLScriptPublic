@@ -37,6 +37,20 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   x=await run('status',{prefs:old});assert.equal(x.calls,1);assert(x.notifications.join(' ').includes('DRY_RUN'));
   x=await run('status',{prefs:old,answer:{statusCode:401,body:'{"error":"unauthorized"}'}});assert(x.notifications.join(' ').includes('401'));
   x=await run('status',{prefs:old,reject:true});assert(x.notifications.join(' ').includes('网络异常'));
+  // Expired debug windows must retain useful local success/failure diagnostics.
+  const oldTime=new Date(Date.now()-12*60000).toISOString();
+  x=await run('status',{prefs:{...old,
+    qlcap_v1_trace_until:'0',qlcap_v1_trace_attempt_count:'9',
+    qlcap_v1_trace_sent_count:'6',qlcap_v1_trace_failed_count:'3',
+    qlcap_v1_trace_last_result:'HTTP 403',qlcap_v1_trace_last_attempt_at:oldTime,
+    qlcap_v1_bydhy_reqb_seen_at:oldTime,qlcap_v1_bydhy_rsb_seen_at:oldTime}});
+  const diag=x.notifications.join(' ');
+  assert(diag.includes('诊断窗口已关闭'));
+  assert(diag.includes('上传尝试9/成功6/失败3'));
+  assert(diag.includes('HTTP 403'));
+  assert(diag.includes('正文请求 12分钟前'));
+  assert(diag.includes('响应 12分钟前'));
+  assert(!diag.includes(TOKEN));
 
   const unified=fs.readFileSync(__dirname+'/capture.js','utf8');
   async function testUnified(url,responseBody,armed='1'){
@@ -62,7 +76,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
   y=await testUnified('https://invalid.example/?service=mina.decryptCode','YWJjZA==');
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js?v=151#trace=rsb'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js?v=152#trace=rsb'));
   // Actual sign-in request body is encrypted; collecting it must not execute a new sign-in.
   const signPath='https://mina.bydoceanauto.com/?s=ForCommonUcSrv.forward&serviceDir=activity/sign/signIn';
   async function testSignRequest(armed='1') {
@@ -110,7 +124,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
   hit=await passiveProbe({response:true});
   assert(hit.store.qlcap_v1_bydhy_seen_at);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js?v=151#trace=reqb'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js?v=152#trace=reqb'));
   console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
@@ -152,6 +166,10 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
    assert.equal(sent.stage,({reqh:'request_headers',reqb:'request_body',rsh:'response_headers',rsb:'response_body'})[phase]);
    assert.equal(t.uploads[0].headers.Authorization,'Bearer '+TOKEN);
    assert.equal(t.prefs.qlcap_v1_trace_sent_count,'1');
+   assert.equal(t.prefs.qlcap_v1_trace_attempt_count,'1');
+   assert.equal(t.prefs.qlcap_v1_trace_failed_count,undefined);
+   assert(t.prefs.qlcap_v1_trace_last_attempt_at);
+   assert.equal(t.prefs.qlcap_v1_trace_last_result,'ok/'+phase);
    assert(!t.notifications.join(' ').includes(t.secret));
    if(phase==='reqh')assert.equal(sent.headers.Authorization,'Bearer '+t.secret);
    if(phase==='rsh')assert.equal(sent.headers['Set-Cookie'],'sid='+t.secret);
@@ -159,13 +177,21 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
     assert.equal(t.result.body,t.original);
     assert.equal(sent.headers.Authorization,'Bearer '+t.secret);
     assert(t.prefs.qlcap_v1_bydhy_body_seen_at);
+    assert(t.prefs.qlcap_v1_bydhy_reqb_seen_at);
    }
    if(phase==='rsb'){
     assert.equal(t.result.body,t.original);
     assert.equal(sent.headers['Set-Cookie'],'sid='+t.secret);
     assert.equal(sent.status,201);
+    assert(t.prefs.qlcap_v1_bydhy_rsb_seen_at);
    }
   }
+  const rejected=await runFourPhase('reqb',{reply:{statusCode:403,body:'{"error":"not armed"}'}});
+  assert.equal(rejected.prefs.qlcap_v1_trace_attempt_count,'1');
+  assert.equal(rejected.prefs.qlcap_v1_trace_failed_count,'1');
+  assert.equal(rejected.prefs.qlcap_v1_trace_last_result,'HTTP 403');
+  assert.equal(rejected.prefs.qlcap_v1_trace_sent_count,'0');
+  assert.equal(rejected.result.body,rejected.original);
   let inactive=await runFourPhase('reqb',{active:false});
   assert.equal(inactive.uploads.length,0);
   assert.equal(inactive.result.body,inactive.original);

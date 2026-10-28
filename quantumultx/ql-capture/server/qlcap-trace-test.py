@@ -60,7 +60,11 @@ class StateTests(unittest.TestCase):
         with self.assertRaises(PermissionError):self.s.ingest(EVENT)
         self.s.purge_at=time.time()-1
         self.assertEqual(self.s.raw(),[])
-        self.assertEqual(self.s.status()["events"],0)
+        info=self.s.status()
+        self.assertEqual(info["events"],0)
+        self.assertEqual(info["last_completed"]["stages"],{"request_headers":1})
+        self.assertEqual(info["last_completed"]["events"],1)
+        self.assertNotIn("PrivateSessionCookieForTest",json.dumps(info))
     def test_bounds(self):
         with self.assertRaises(ValueError):self.s.ingest(dict(EVENT,stage="crazy"))
         with self.assertRaises(ValueError):self.s.ingest(dict(EVENT,body="x"*(m.MAX_BODY_CHARS+1)))
@@ -71,6 +75,7 @@ class StateTests(unittest.TestCase):
         self.assertEqual(self.s.raw()[0]["headers"]["Cookie"],"PrivateSessionCookieForTest")
         self.s.stop()
         self.assertEqual(self.s.raw(),[])
+        self.assertEqual(self.s.status()["last_completed"]["stages"],{"request_headers":1})
 
 class HttpTests(unittest.TestCase):
     @classmethod

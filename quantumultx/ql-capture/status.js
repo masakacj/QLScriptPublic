@@ -1,21 +1,34 @@
 /* QX manual status diagnostic - no credentials or cookie values in logs. */
 'use strict';
-const VERSION='1.5.0', P='qlcap_v1_';
+const VERSION='1.5.2', P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Status v'+VERSION+'] '+x);}
 function note(title,msg){log(title+' / '+msg);if(typeof $notify==='function')$notify('青龙采集 v'+VERSION,title,msg);}
 function read(k){return $prefs.valueForKey(P+k)||'';}
 function done(){log('finish');$done({});}
+function age(key){
+ const ms=Date.parse(read(key));
+ if(!Number.isFinite(ms))return '从未';
+ const mins=Math.max(0,Math.floor((Date.now()-ms)/60000));
+ return mins<1?'刚刚':mins<60?mins+'分钟前':mins<1440?Math.floor(mins/60)+'小时前':Math.floor(mins/1440)+'天前';
+}
 function traceStatus(){
  const sec=Math.max(0,Math.floor(((Number(read('trace_until'))||0)-Date.now())/1000));
- const count=Number(read('trace_sent_count'))||0;
- const result=read('trace_last_result')||'未发送';
- return sec>0?('深度诊断剩余 '+sec+' 秒，已上传 '+count+' 条，最新 '+result):'深度诊断关闭';
+ const attempted=Number(read('trace_attempt_count'))||0;
+ const ok=Number(read('trace_sent_count'))||0;
+ const failed=Number(read('trace_failed_count'))||0;
+ const result=read('trace_last_result')||'未记录';
+ return (sec>0?'诊断剩余'+sec+'秒':'诊断窗口已关闭')+
+  ' · 上传尝试'+attempted+'/成功'+ok+'/失败'+failed+
+  ' · 最近'+result+'（'+age('trace_last_attempt_at')+'）';
 }
 function bydStatus(){
- const last=read('bydhy_seen_at');
- const body=read('bydhy_body_seen_at');
- const status=read('bydhy_enc')?'本地已保存加密凭据（未同步青龙）':last?'域名已命中，尚未获取凭据':'尚未命中域名';
- return status+'（'+(body?'正文脚本已触发':'正文脚本尚未触发')+'）';
+ const hit=Boolean(read('bydhy_seen_at'));
+ const status=read('bydhy_enc')?'本地有加密候选（未同步青龙）':hit?'域名已命中':'域名未命中';
+ const rq=read('bydhy_reqb_seen_at'),rs=read('bydhy_rsb_seen_at');
+ const older=read('bydhy_body_seen_at');
+ const stages=(rq||rs)?('正文请求 '+age('bydhy_reqb_seen_at')+' / 响应 '+age('bydhy_rsb_seen_at')):
+    older?('正文曾触发 '+age('bydhy_body_seen_at')+'，阶段未区分'):'正文未触发';
+ return status+' · '+stages;
 }
 try{
  log('start');

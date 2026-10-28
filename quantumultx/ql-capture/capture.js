@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.5.1',P='qlcap_v1_';
+const V='1.5.2',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -84,6 +84,8 @@ function handleBydTrace(url,stage){
   put('bydhy_seen_at',new Date().toISOString());
   put('bydhy_body_seen_at',new Date().toISOString());
   put('bydhy_body_last_stage',stage);
+  if(stage==='reqb')put('bydhy_reqb_seen_at',new Date().toISOString());
+  if(stage==='rsb')put('bydhy_rsb_seen_at',new Date().toISOString());
  }
  if(stage==='reqh'){
   put('bydhy_seen_at',new Date().toISOString());
@@ -129,31 +131,45 @@ function handleBydTrace(url,stage){
    obj.truncated=text.length>200000;
   }
  }
+ const attempts=Number(get('trace_attempt_count'))||0;
+ put('trace_attempt_count',String(attempts+1));
+ put('trace_last_attempt_at',new Date().toISOString());
+ put('trace_last_stage',stage);
+ put('trace_last_result','pending');
  let finished=false;
  function exit(){if(finished)return;finished=true;finishPhase(stage);}
- // Limit diagnostic overhead for user traffic. Late responses are ignored.
- const timeout=setTimeout(exit,1800);
- $task.fetch({
-  url:server+'/trace/v1/ingest', method:'POST',
-  headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-  body:JSON.stringify(obj),opts:{policy:'direct'}
- }).then(r=>{
+ function fail(reason){
   if(finished)return;
-  clearTimeout(timeout);
-  const code=Number(r.statusCode||r.status||0);
-  if(code===200){
-   const prior=Number(get('trace_sent_count'))||0;
-   put('trace_sent_count',String(prior+1));
-   put('trace_last_sent',new Date().toISOString());
-   put('trace_last_result','ok');
-   if(prior===0)note('请求诊断开始','已接收到指定域名的请求/响应事件；原文仅在受控服务器内存');
-  }else{
-   put('trace_last_result','HTTP '+code);
-  }
+  put('trace_failed_count',String((Number(get('trace_failed_count'))||0)+1));
+  put('trace_last_result',reason);
+  put('trace_last_fail_at',new Date().toISOString());
   exit();
- }).catch(()=>{
-  if(!finished){clearTimeout(timeout);put('trace_last_result','network error');exit();}
- });
+ }
+ // Use a short bounded wait, preserving the original HTTP body regardless of outcome.
+ const timeout=setTimeout(()=>fail('timeout'),2500);
+ try{
+  $task.fetch({
+   url:server+'/trace/v1/ingest',method:'POST',
+   headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+   body:JSON.stringify(obj),opts:{policy:'direct'}
+  }).then(r=>{
+   if(finished)return;
+   clearTimeout(timeout);
+   const code=Number(r.statusCode||r.status||0);
+   if(code===200){
+    const prior=Number(get('trace_sent_count'))||0;
+    put('trace_sent_count',String(prior+1));
+    put('trace_last_sent',new Date().toISOString());
+    put('trace_last_result','ok/'+stage);
+    if(prior===0)note('请求诊断开始','已收到指定域名的请求/响应事件；原文只存于受控服务器内存');
+    exit();
+   }else fail('HTTP '+code);
+  }).catch(()=>{
+   if(!finished){clearTimeout(timeout);fail('network error');}
+  });
+ }catch(_e){
+  if(!finished){clearTimeout(timeout);fail('fetch exception');}
+ }
 }
 
 function captureByd(url){
