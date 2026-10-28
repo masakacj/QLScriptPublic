@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.5.0',P='qlcap_v1_';
+const V='1.5.1',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
