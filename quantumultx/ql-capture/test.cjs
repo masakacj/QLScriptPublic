@@ -62,7 +62,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
   y=await testUnified('https://invalid.example/?service=mina.decryptCode','YWJjZA==');
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=rsb'));
   // Actual sign-in request body is encrypted; collecting it must not execute a new sign-in.
   const signPath='https://mina.bydoceanauto.com/?s=ForCommonUcSrv.forward&serviceDir=activity/sign/signIn';
   async function testSignRequest(armed='1') {
@@ -110,10 +110,82 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
   hit=await passiveProbe({response:true});
   assert(hit.store.qlcap_v1_bydhy_seen_at);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=reqh'));
   console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
+
+
+  async function runFourPhase(phase, {active=true, reply={statusCode:200,body:'{"accepted":true}'}, url=signPath}={}){
+   const prefs={
+    qlcap_v1_armed:'1', qlcap_v1_bydhy_armed:'1',
+    qlcap_v1_url:'https://qlcap.781751.xyz:58443',qlcap_v1_token:TOKEN,
+    qlcap_v1_trace_until:active?String(Date.now()+60000):'0',
+    qlcap_v1_trace_sent_count:'0'
+   };
+   const original=phase==='reqb'?'test-raw-request-body':'test-raw-response-body';
+   const secret='USER_SECRET_SESSION_12345';
+   const notifications=[],uploads=[];
+   let resolveDone;
+   const completion=new Promise(resolve=>resolveDone=resolve);
+   const sandbox={
+    $environment:{sourcePath:BASE+'capture.js#trace='+phase},
+    $request:{url,method:'POST',sessionIndex:4321,body:phase==='reqb'?original:undefined,headers:{Authorization:'Bearer '+secret}},
+    $response:{statusCode:201,sessionIndex:4321,body:phase==='rsb'?original:undefined,headers:{"Set-Cookie":"sid="+secret}},
+    $prefs:{valueForKey:k=>prefs[k]||'',setValueForKey:(v,k)=>(prefs[k]=v,true)},
+    $notify:(...args)=>notifications.push(args.join(' ')),
+    $task:{fetch:async opts=>{uploads.push(opts);return reply;}},
+    $done:value=>resolveDone(value),
+    setTimeout,clearTimeout,
+    console:{log:()=>{}},
+   };
+   vm.runInNewContext(unified,sandbox,{timeout:3000});
+   const result=await Promise.race([completion,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout in phase '+phase)),3500))]);
+   return {result,uploads,prefs,notifications,original,secret};
+  }
+  for (const phase of ['reqh','reqb','rsh','rsb']){
+   const t=await runFourPhase(phase);
+   assert.equal(t.uploads.length,1,'upload expected for '+phase);
+   const sent=JSON.parse(t.uploads[0].body);
+   assert.equal(sent.session_index,'4321');
+   assert.equal(sent.url,signPath);
+   assert.equal(sent.stage,({reqh:'request_headers',reqb:'request_body',rsh:'response_headers',rsb:'response_body'})[phase]);
+   assert.equal(t.uploads[0].headers.Authorization,'Bearer '+TOKEN);
+   assert.equal(t.prefs.qlcap_v1_trace_sent_count,'1');
+   assert(!t.notifications.join(' ').includes(t.secret));
+   if(phase==='reqh')assert.equal(sent.headers.Authorization,'Bearer '+t.secret);
+   if(phase==='rsh')assert.equal(sent.headers['Set-Cookie'],'sid='+t.secret);
+   if(phase==='reqb')assert.equal(t.result.body,t.original);
+   if(phase==='rsb')assert.equal(t.result.body,t.original);
+  }
+  let inactive=await runFourPhase('reqb',{active:false});
+  assert.equal(inactive.uploads.length,0);
+  assert.equal(inactive.result.body,inactive.original);
+  inactive=await runFourPhase('reqh',{url:'https://other.example.com/'});
+  assert.equal(inactive.uploads.length,0);
+  assert(!inactive.notifications.join(' ').includes('USER_SECRET'));
+  console.log('PASS QX four-phase HTTP capture, exact-domain/TTL gating, unchanged bodies, safe notifications');
+  // Existing QL Arm must only enable 10m debug when the server has explicitly armed it.
+  const armScript=fs.readFileSync(__dirname+'/arm.js','utf8');
+  async function armWith(reply){
+   const prefs={'qlcap_v1_token':TOKEN,'qlcap_v1_url':'https://qlcap.781751.xyz:58443'};
+   const notifications=[];let finish;
+   const completion=new Promise(resolve=>finish=resolve);
+   vm.runInNewContext(armScript,{
+    $prefs:{valueForKey:k=>prefs[k]||'',setValueForKey:(v,k)=>(prefs[k]=v,true)},
+    $task:{fetch:async x=>{assert(x.url.includes('/trace/v1/config'));return reply;}},
+    $notify:(...args)=>notifications.push(args.join(' ')),
+    $done:()=>finish(),console:{log:()=>{}},
+   },{timeout:2000});
+   await Promise.race([completion,new Promise((_,rej)=>setTimeout(()=>rej(Error('arm not done')),1000))]);
+   return {prefs,notifications};
+  }
+  let arm=await armWith({statusCode:200,body:'{"active":true,"host":"mina.bydoceanauto.com","remaining_seconds":480}'});
+  assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
+  assert(arm.notifications.join(' ').includes('深度诊断'));
+  arm=await armWith({statusCode:200,body:'{"active":false,"remaining_seconds":0}'});
+  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
+  console.log('PASS QL Arm requires server-side trace authorization');
 
   console.log('PASS 8 simulated QX setup/status flows; all notifications avoid tokens');
 })().catch(e=>{console.error(e);process.exitCode=1;});

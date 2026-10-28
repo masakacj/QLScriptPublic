@@ -1,19 +1,34 @@
-/* QX one-shot arm; logs never print a token. */
+/* QX unified capture switch; deep trace is explicitly enabled only if
+ * the server collector is armed, and expires within 10 minutes.
+ */
 'use strict';
-const V='1.3.0',P='qlcap_v1_';
+const V='1.5.0',P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Arm v'+V+'] '+x);}
+function notify(title,msg){if(typeof $notify==='function')$notify('青龙采集 v'+V,title,msg);}
 function done(){$done({});}
 try{
- log('start');
- const url=$prefs.valueForKey(P+'url')||'',token=$prefs.valueForKey(P+'token')||'';
- const valid=/^https:\/\//i.test(url)&&token.length>=32;
- if(valid){
-  const saved=$prefs.setValueForKey('1',P+'armed'); $prefs.setValueForKey('1',P+'bydhy_armed');
-  log('continuous capture enabled; save='+Boolean(saved));
-  if(typeof $notify==='function')$notify('青龙采集 v'+V,'已开启持续采集','顺丰和比亚迪白名单采集已开启；比亚迪响应仅存 QX 本地');
+ const url=($prefs.valueForKey(P+'url')||'').replace(/\/+$/,'');
+ const token=$prefs.valueForKey(P+'token')||'';
+ if(url!=='https://qlcap.781751.xyz:58443'||token.length<32){
+  notify('尚未初始化','先运行 QL Setup；没有启用深度诊断');done();
  }else{
-  log('not configured; no state changed');
-  if(typeof $notify==='function')$notify('青龙采集 v'+V,'尚未初始化','先运行 QL Setup');
+  $prefs.setValueForKey('1',P+'armed');
+  $prefs.setValueForKey('1',P+'bydhy_armed');
+  $prefs.setValueForKey('0',P+'trace_until');
+  // Deep trace cannot start without a separately armed, 10-minute server window.
+  $task.fetch({url:url+'/trace/v1/config',method:'GET',
+    headers:{Authorization:'Bearer '+token,Accept:'application/json'},
+    opts:{policy:'direct'}}).then(r=>{
+     const code=Number(r.statusCode||r.status||0);
+     let v={};try{v=JSON.parse(r.body||'{}');}catch(_e){}
+     if(code===200&&v.active&&v.host==='mina.bydoceanauto.com'&&Number(v.remaining_seconds)>0){
+      const seconds=Math.min(600,Math.floor(Number(v.remaining_seconds)));
+      $prefs.setValueForKey(String(Date.now()+seconds*1000),P+'trace_until');
+      $prefs.setValueForKey('0',P+'trace_sent_count');
+      $prefs.setValueForKey('',P+'trace_last_result');
+      notify('持续采集和深度诊断已开启','比亚迪 HTTP 请求/响应将限时采集 '+seconds+' 秒；仅供受控分析');
+     }else notify('持续采集已开启','顺丰及比亚迪正常采集开启；深度诊断未启用');
+     done();
+    }).catch(()=>{notify('持续采集已开启','诊断服务未连通；普通 Cookie 采集不受影响');done();});
  }
-}catch(e){log('script exception; no sensitive details');}
-log('finish');done();
+}catch(_e){log('script exception; details withheld');done();}

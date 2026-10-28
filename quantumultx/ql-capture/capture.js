@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.4.3',P='qlcap_v1_';
+const V='1.5.0',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -41,6 +41,116 @@ function probeByd(){
   note('比亚迪域名已命中','QX HTTPS 拦截有效；尚未捕获到登录/签到请求体');
  }
 }
+
+/* Deep trace: explicitly activated for 10 minutes, exact BYD domain only.
+ * Stages are selected by the public rewrite script URL fragment.
+ * No captured headers, bodies, or URL query values reach QX logs/notifications.
+ */
+function tracePhase(){
+ const path=(typeof $environment!=='undefined'&&$environment&&$environment.sourcePath)||'';
+ const match=/#trace=(reqh|reqb|rsh|rsb)(?:&|$)/.exec(path);
+ return match?match[1]:'';
+}
+function finishPhase(stage){
+ if(stage==='reqb'&&typeof $request!=='undefined'&&$request&&typeof $request.body==='string')
+  return $done({body:$request.body});
+ if(stage==='rsb'&&typeof $response!=='undefined'&&$response&&typeof $response.body==='string')
+  return $done({body:$response.body});
+ if(stage==='rsb'&&typeof $response!=='undefined'&&$response&&$response.bodyBytes)
+  return $done({bodyBytes:$response.bodyBytes});
+ return $done({});
+}
+function headersForTrace(value){
+ const out={},names=Object.keys(value||{}).slice(0,90);
+ for(let i=0;i<names.length;i++){
+  const k=names[i]; if(!k||k.length>128)continue;
+  const s=String(value[k]===undefined?'':value[k]);
+  out[k]=s.slice(0,16384);
+ }
+ return out;
+}
+function validB64(text){
+ return typeof text==='string'&&text.length>0&&text.length<16384&&/^[A-Za-z0-9+/=]+$/.test(text);
+}
+function handleBydTrace(url,stage){
+ if(get('armed')==='0'||get('bydhy_armed')==='0')return finishPhase(stage);
+ const req=typeof $request!=='undefined'&&$request?$request:{};
+ const resp=typeof $response!=='undefined'&&$response?$response:{};
+ const requestBody=typeof req.body==='string'?req.body:null;
+ const responseBody=typeof resp.body==='string'?resp.body:null;
+ const isSign=/[?&]s=ForCommonUcSrv\.forward(?:&|$)/.test(url)&&/[?&]serviceDir=activity\/sign\/signIn(?:&|$)/.test(url);
+ const isLogin=/[?&]service=mina\.decryptCode(?:&|$)/.test(url);
+ if(stage==='reqh'){
+  put('bydhy_seen_at',new Date().toISOString());
+  if(Date.now()>=(Number(get('trace_until'))||0))probeByd();
+ }
+ if(stage==='reqb'&&validB64(requestBody)){
+  if(isSign){
+   if(put('bydhy_enc',requestBody)){put('bydhy_at',new Date().toISOString());note('比亚迪凭据候选已保存','签到请求体已捕获，仅保存在 QX 本地');}
+  }
+ }
+ if(stage==='rsb'&&isLogin&&validB64(responseBody)&&get('bydhy_enc')!==responseBody){
+  if(put('bydhy_enc',responseBody)){put('bydhy_at',new Date().toISOString());note('比亚迪登录响应已保存','加密响应仅保存在 QX 本地');}
+ }
+ const until=Number(get('trace_until'))||0;
+ if(Date.now()>=until)return finishPhase(stage);
+ const server=get('url').replace(/\/+$/,'');
+ const token=get('token');
+ // Never send captured data to an unapproved destination even if QX prefs change.
+ if(server!=='https://qlcap.781751.xyz:58443'||token.length<32){
+  put('trace_last_result','gateway not configured');
+  return finishPhase(stage);
+ }
+ const phases={reqh:'request_headers',reqb:'request_body',rsh:'response_headers',rsb:'response_body'};
+ const obj={
+  v:1, stage:phases[stage], url:url,
+  session_index:req.sessionIndex!==undefined?String(req.sessionIndex):
+   resp.sessionIndex!==undefined?String(resp.sessionIndex):null,
+  method:req.method?String(req.method).toUpperCase():null,
+  at:Date.now()
+ };
+ if(stage==='reqh')obj.headers=headersForTrace(req.headers);
+ if(stage==='rsh'){
+  obj.headers=headersForTrace(resp.headers);
+  const v=Number(resp.statusCode);if(Number.isFinite(v))obj.status=v;
+ }
+ if(stage==='reqb'||stage==='rsb'){
+  const text=stage==='reqb'?requestBody:responseBody;
+  if(text===null){
+   obj.body=null;
+   obj.binary_body=Boolean((stage==='reqb'?req.bodyBytes:resp.bodyBytes));
+  }else{
+   obj.body=text.slice(0,200000);
+   obj.truncated=text.length>200000;
+  }
+ }
+ let finished=false;
+ function exit(){if(finished)return;finished=true;finishPhase(stage);}
+ // Limit diagnostic overhead for user traffic. Late responses are ignored.
+ const timeout=setTimeout(exit,1800);
+ $task.fetch({
+  url:server+'/trace/v1/ingest', method:'POST',
+  headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+  body:JSON.stringify(obj),opts:{policy:'direct'}
+ }).then(r=>{
+  if(finished)return;
+  clearTimeout(timeout);
+  const code=Number(r.statusCode||r.status||0);
+  if(code===200){
+   const prior=Number(get('trace_sent_count'))||0;
+   put('trace_sent_count',String(prior+1));
+   put('trace_last_sent',new Date().toISOString());
+   put('trace_last_result','ok');
+   if(prior===0)note('请求诊断开始','已接收到指定域名的请求/响应事件；原文仅在受控服务器内存');
+  }else{
+   put('trace_last_result','HTTP '+code);
+  }
+  exit();
+ }).catch(()=>{
+  if(!finished){clearTimeout(timeout);put('trace_last_result','network error');exit();}
+ });
+}
+
 function captureByd(url){
  if(get('armed')==='0' || get('bydhy_armed')==='0'){log('BYD capture paused');return done();}
  const login=/^https:\/\/mina\.bydoceanauto\.com\/\?service=mina\.decryptCode(?:&|$)/i.test(url);
@@ -74,7 +184,10 @@ function captureByd(url){
 }
 function main(){
  const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
- if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(source))return captureByd(source);
+ if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(source)){
+  const stage=tracePhase();
+  return stage?handleBydTrace(source,stage):captureByd(source);
+ }
  if(get('armed')==='0'){log('skipped: capture paused');return done();}
  const server=get('url').replace(/\/+$/,''),token=get('token');
  if(!/^https:\/\/[^/]+$/i.test(server)||token.length<32){log('skipped: setup absent');return done();}

@@ -28,3 +28,5 @@ jobs:
       - name: Test online initialization and status
         run: |
           node quantumultx/ql-capture/test.cjs
+      - name: Test allowlisted RAM-only HTTP collector
+        run: python3 quantumultx/ql-capture/server/qlcap-trace-test.py
