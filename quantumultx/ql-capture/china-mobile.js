@@ -18,7 +18,7 @@ try{
  const server=read('url').replace(/\/+$/,''),token=read('token');
  if(server!==GATEWAY||token.length<32)return end();
  const event={v:1,stage:'request_headers',origin:'qx-china-mobile',
-    url:'https://wx.10086.cn/qwhdhub/api/mark/mark31/domark',
+    url:req.url,
     method:'POST',at:Date.now(),session_index:'mobile-'+Date.now(),
     headers:{Cookie:'QWHD_SESSION_TOKEN='+m[1]}};
  $task.fetch({url:server+'/trace/v1/ingest',method:'POST',
