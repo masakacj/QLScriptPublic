@@ -205,25 +205,53 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   console.log('PASS QX four-phase HTTP capture, exact-domain/TTL gating, unchanged bodies, safe notifications');
   // Existing QL Arm must only enable 10m debug when the server has explicitly armed it.
   const armScript=fs.readFileSync(__dirname+'/arm.js','utf8');
-  async function armWith(reply){
+  async function armWith(configResponse,activationResponse=null){
    const prefs={'qlcap_v1_token':TOKEN,'qlcap_v1_url':'https://qlcap.781751.xyz:58443'};
-   const notifications=[];let finish;
+   const notifications=[],calls=[];let finish;
    const completion=new Promise(resolve=>finish=resolve);
    vm.runInNewContext(armScript,{
     $prefs:{valueForKey:k=>prefs[k]||'',setValueForKey:(v,k)=>(prefs[k]=v,true)},
-    $task:{fetch:async x=>{assert(x.url.includes('/trace/v1/config'));return reply;}},
+    $task:{fetch:async x=>{
+     calls.push(x);
+     assert.equal(x.headers.Authorization,'Bearer '+TOKEN);
+     if(x.url.endsWith('/trace/v1/config')){
+      assert.equal(x.method,'GET');
+      return configResponse;
+     }
+     if(x.url.endsWith('/trace/v1/activate')){
+      assert.equal(x.method,'POST');
+      assert.equal(JSON.parse(x.body).host,'mina.bydoceanauto.com');
+      if(!activationResponse)throw Error('Unexpected activation request');
+      return activationResponse;
+     }
+     throw Error('Unexpected QX outbound request');
+    }},
     $notify:(...args)=>notifications.push(args.join(' ')),
     $done:()=>finish(),console:{log:()=>{}},
    },{timeout:2000});
    await Promise.race([completion,new Promise((_,rej)=>setTimeout(()=>rej(Error('arm not done')),1000))]);
-   return {prefs,notifications};
+   return {prefs,notifications,calls};
   }
   let arm=await armWith({statusCode:200,body:'{"active":true,"host":"mina.bydoceanauto.com","remaining_seconds":480}'});
   assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
   assert(arm.notifications.join(' ').includes('深度诊断'));
-  arm=await armWith({statusCode:200,body:'{"active":false,"remaining_seconds":0}'});
+  assert.equal(arm.calls.length,1);
+  arm=await armWith({statusCode:200,body:'{"active":false,"prepared":false,"remaining_seconds":0}'});
   assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
-  console.log('PASS QL Arm requires server-side trace authorization');
+  assert.equal(arm.calls.length,1);
+  assert(!arm.notifications.join(' ').includes('深度诊断已开启'));
+  const prep=JSON.stringify({active:false,prepared:true,prepared_host:'mina.bydoceanauto.com',prepared_remaining_seconds:3600});
+  const activated=JSON.stringify({active:true,prepared:false,host:'mina.bydoceanauto.com',remaining_seconds:599});
+  arm=await armWith({statusCode:200,body:prep},{statusCode:200,body:activated});
+  assert.equal(arm.calls.length,2);
+  assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
+  assert(arm.notifications.join(' ').includes('深度诊断已开启'));
+  arm=await armWith({statusCode:200,body:prep},{statusCode:409,body:'{"error":"not prepared"}'});
+  assert.equal(arm.calls.length,2);
+  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
+  assert(arm.notifications.join(' ').includes('HTTP 409'));
+  assert(!arm.notifications.join(' ').includes(TOKEN));
+  console.log('PASS QL Arm deferred one-time server activation, no unprepared/failed recording');
 
   console.log('PASS 8 simulated QX setup/status flows; all notifications avoid tokens');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -30,6 +30,8 @@ MAX_BODY_CHARS = 1024 * 1024
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 MAX_EVENTS = 350
 MAX_MINUTES = 15
+PREPARE_MAX_MINUTES = 120
+ACTIVATED_CAPTURE_MINUTES = 10
 RETENTION_AFTER_CAPTURE_SECONDS = 60 * 60
 STAGES = frozenset({"request_headers", "request_body", "response_headers", "response_body"})
 TRACE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z._:-]{1,96}$")
@@ -65,6 +67,8 @@ class TraceState:
         self.lock = threading.RLock()
         self.until = 0.0
         self.purge_at = 0.0
+        self.prepared_host = None
+        self.prepared_until = 0.0
         self.host = None
         self.events = deque()
         self.total_bytes = 0
@@ -80,12 +84,40 @@ class TraceState:
                 'stages': dict(self.stage_counts),
                 'closed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
 
+    def prepare(self, hostname, minutes):
+        if hostname not in ALLOWED_HOSTS:
+            raise ValueError("host not allowlisted")
+        if not 1 <= minutes <= PREPARE_MAX_MINUTES:
+            raise ValueError("invalid preparation duration")
+        with self.lock:
+            if self.active():
+                raise PermissionError("active trace already running")
+            self.prepared_host = hostname
+            self.prepared_until = time.time() + minutes * 60
+            return self.status()
+
+    def activate(self, hostname):
+        if hostname not in ALLOWED_HOSTS:
+            raise ValueError("host not allowlisted")
+        with self.lock:
+            self.active()
+            if self.host and time.time() < self.until:
+                raise PermissionError("capture already active")
+            if self.prepared_host != hostname or time.time() >= self.prepared_until:
+                raise PermissionError("no valid prepared trace")
+            # One preparation authorizes precisely one active 10-minute session.
+            self.prepared_host = None
+            self.prepared_until = 0.0
+            return self.arm(hostname, ACTIVATED_CAPTURE_MINUTES)
+
     def arm(self, hostname, minutes):
         if hostname not in ALLOWED_HOSTS:
             raise ValueError("host not allowlisted")
         if not 1 <= minutes <= MAX_MINUTES:
             raise ValueError("invalid duration")
         with self.lock:
+            self.prepared_host = None
+            self.prepared_until = 0.0
             self._archive_metrics()
             self.events.clear()
             self.total_bytes = 0
@@ -98,6 +130,8 @@ class TraceState:
 
     def stop(self):
         with self.lock:
+            self.prepared_host = None
+            self.prepared_until = 0.0
             self._archive_metrics()
             self.until = 0.0
             self.purge_at = 0.0
@@ -109,6 +143,9 @@ class TraceState:
             return self.status()
 
     def active(self):
+        if self.prepared_host and time.time() >= self.prepared_until:
+            self.prepared_host = None
+            self.prepared_until = 0.0
         # New capture is disabled at until, but data is retained briefly for analysis.
         if self.host and time.time() >= self.purge_at:
             self._archive_metrics()
@@ -125,6 +162,9 @@ class TraceState:
         with self.lock:
             return {"active": self.active(), "host": self.host if self.active() else None,
                     "remaining_seconds": max(0, int(self.until - time.time())),
+                    "prepared": bool(self.prepared_host),
+                    "prepared_host": self.prepared_host,
+                    "prepared_remaining_seconds": max(0, int(self.prepared_until - time.time())), 
                     "retained_seconds": max(0, int(self.purge_at - time.time())),
                     "events": len(self.events), "memory_bytes": self.total_bytes,
                     "stages": dict(self.stage_counts), "last_completed": self.last_completed,
@@ -235,6 +275,16 @@ class Handler(BaseHTTPRequestHandler):
         return self.reply(404,{"error":"not found"})
 
     def do_POST(self):
+        if self.path == "/trace/v1/activate":
+            if not self.auth(CAPTURE_TOKEN):return self.reply(401,{"error":"unauthorized"})
+            try:
+                data=self.read_json()
+                if not isinstance(data,dict):raise ValueError("invalid json")
+                hostname=data.get("host")
+                status=state.activate(hostname)
+            except PermissionError:return self.reply(409,{"error":"not prepared or already active"})
+            except (ValueError,TypeError):return self.reply(400,{"error":"invalid activation request"})
+            return self.reply(200,status)
         if self.path == "/trace/v1/ingest":
             if not self.auth(CAPTURE_TOKEN):return self.reply(401,{"error":"unauthorized"})
             try: event=self.read_json()
@@ -243,6 +293,15 @@ class Handler(BaseHTTPRequestHandler):
             except PermissionError:return self.reply(403,{"error":"capture not enabled"})
             except OverflowError:return self.reply(429,{"error":"trace limit"})
             except (ValueError,TypeError):return self.reply(400,{"error":"invalid event"})
+            return self.reply(200,outcome)
+        if self.path == "/_admin/prepare":
+            if not self.is_admin():return self.reply(401,{"error":"unauthorized"})
+            try:
+                data=self.read_json()
+                if not isinstance(data,dict):raise ValueError("invalid json")
+                outcome=state.prepare(data.get("host"),int(data.get("minutes")))
+            except PermissionError:return self.reply(409,{"error":"capture already active"})
+            except (ValueError,TypeError):return self.reply(400,{"error":"invalid prepare request"})
             return self.reply(200,outcome)
         if self.path == "/_admin/arm":
             if not self.is_admin():return self.reply(401,{"error":"unauthorized"})
@@ -267,7 +326,8 @@ def cli(args):
     allowed={"status":("GET","/_admin/status",None),
              "summary":("GET","/_admin/summary",None),
              "stop":("POST","/_admin/stop",{}),
-             "arm":("POST","/_admin/arm",{"host":"mina.bydoceanauto.com","minutes":10})}
+             "arm":("POST","/_admin/arm",{"host":"mina.bydoceanauto.com","minutes":10}),
+             "prepare":("POST","/_admin/prepare",{"host":"mina.bydoceanauto.com","minutes":120})}
     if op not in allowed:raise SystemExit("unsupported action")
     method,path,data=allowed[op]
     raw=json.dumps(data).encode("utf-8") if data is not None else None
