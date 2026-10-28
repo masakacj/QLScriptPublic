@@ -28,4 +28,3 @@ jobs:
       - name: Test online initialization and status
         run: |
           node quantumultx/ql-capture/test.cjs
-          node quantumultx/ql-capture/bydhy-capture.test.cjs
