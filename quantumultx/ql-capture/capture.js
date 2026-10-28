@@ -12,6 +12,8 @@ function done(){
  // Never remove or mutate the real sign-in/login payload.
  const url=(typeof $request!=='undefined'&&$request&&$request.url)||'';
  if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(url)){
+  // A response-header hook must not send body fields as rewrite output.
+  if(typeof $response!=='undefined'&&$response&&$response.headers&&typeof $response.body!=='string')return $done({});
   if(/serviceDir=activity\/sign\/signIn(?:&|$)/i.test(url)&&
      typeof $request.body==='string')return $done({body:$request.body});
   if(/service=mina\.decryptCode(?:&|$)/i.test(url)&&
