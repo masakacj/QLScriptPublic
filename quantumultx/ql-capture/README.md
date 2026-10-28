@@ -110,24 +110,12 @@ event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main
 
 Portainer（127）Stack `ql-capture-gateway`、青龙（233）独立 `envs` 应用。HTTPS 使用已有 NPM 的 `*.781751.xyz` 证书和宿主端口 58443；当前 NPM 路由是自定义 vhost（不显示在普通 Proxy Hosts 列表）。不可把 Portainer 或 QingLong 凭据放到公开仓库。
 
-## 比亚迪海洋小程序 QX 单独测试（无需覆盖旧主配置）
+## 比亚迪海洋（已整合原有 QX 采集中心）
 
-> 2026-10-28 起：QX 独立测试模块只把 mina.decryptCode 的 AES/Base64 登录响应保存在 QX 本机，不上传到网关。青龙 bydhy 变量已创建但当前是禁用/待采集状态。**只测试抓取，暂不等于青龙自动同步完成。**
+比亚迪规则已加入原来的 `rewrite.conf` 和 `capture.js`，与顺丰共享原有 QL Arm、QL Status。**不需要新增 BYD 重写资源，也不要添加 BYD Toggle/Status 任务。** 
 
-1. 在 Quantumult X「设置 → 重写 → 资源」新增独立远程资源：
+在手机现有 QX 中只需刷新原有 Rewrite 远程资源，并保证 `[mitm]` 的 `hostname` 同时含 `mcs-mimp-web.sf-express.com` 与 `mina.bydoceanauto.com`。请仅合并 hostname，不要下载覆盖整份主配置，否则会丢失私有 CA `p12` 和 `passphrase`。
 
-   https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/bydhy-rewrite.conf
+使用现有 **QL Arm** 开启持续抓取，打开比亚迪海洋微信小程序触发 `POST https://mina.bydoceanauto.com/?service=mina.decryptCode`。抓到合法 AES/Base64 响应后提示「比亚迪登录响应已保存」；在现有 **QL Status** 中可以看到「比亚迪：本地已抓取（未同步青龙）」。该测试版仅保存至 QX 本机偏好设置，不自动上传到网关或青龙。
 
-   标签建议 **BYD Ocean Capture**，启用，资源解析器关闭。不要再次导入整份 qx-cookie-only.conf。原顺丰资源保留，互不覆盖。
-2. 在现有 QX 主配置 [mitm] 的**原有 hostname 行**中添加 mina.bydoceanauto.com（若 QX 已自动从远程资源导入该主机名则无需重复添加）。保留原有 passphrase 和 p12，切勿覆盖主配置或重新生成证书。打开 QX Tunnel/VPN、重写、MitM，并确认系统已信任 QX 证书。
-3. 在现有 [task_local] 区块追加以下两行（已有区块不要添加第二个 [task_local]）：
-
-       event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/bydhy-toggle.js, tag=BYD Capture Toggle, enabled=true
-       event-interaction https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/bydhy-status.js, tag=BYD Capture Status, enabled=true
-
-4. 执行 **BYD Capture Toggle**，收到「已开启」后，进入**比亚迪海洋微信小程序**并触发登录/重新登录；捕获成功会出现「加密登录响应已保存」。运行 **BYD Capture Status** 可以查看本地状态，不会显示真实凭据。测试结束再执行 Toggle 可暂停。
-5. 如果没有触发抓取，先查看 QX Rewrite 是否匹配 https://mina.bydoceanauto.com/?service=mina.decryptCode。仅打开已登录的页面未必会再次调用此登录接口；不要为了抓包反复执行签到。若提示响应格式不匹配，需要先检查返回的是应用级报错还是有效的 AES/Base64 登录响应。
-
-脚本仅处理域名 mina.bydoceanauto.com，凭据只保存在 QX 私有偏好设置中；没有自动上传路径。若手机无法刷新 GitHub Raw，可在能访问 GitHub Raw 的网络上刷新一次资源后重试，不要覆盖现有证书或换不可信的脚本源。
-
-QX 抓取测试通过后，需在 ql-capture-gateway 中实现 bydhy 服务白名单、校验和青龙变量同步，才能进行「QX → 网关 → 青龙」完整验收。
+目前 `qlcap.781751.xyz` 的 QX 静态镜像若尚未同步，需要先在服务端刷新镜像，**仅刷新手机旧镜像不会自动获取 GitHub 的最新代码**。可以暂时把已有 Rewrite 资源 URL 切换为 GitHub Raw 的 `https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/rewrite.conf`（替换现有 URL，不是额外新增资源），确保刷新成功后继续测试。
