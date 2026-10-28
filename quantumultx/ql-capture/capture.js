@@ -1,12 +1,27 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.4.1',P='qlcap_v1_';
+const V='1.4.2',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
 function get(k){return $prefs.valueForKey(P+k)||'';}
 function put(k,v){return $prefs.setValueForKey(String(v),P+k);}
-function done(){log('finish');$done({});}
+function done(){
+ log('finish');
+ // In body rewrites QX expects an unchanged original body to be returned.
+ // Never remove or mutate the real sign-in/login payload.
+ const url=(typeof $request!=='undefined'&&$request&&$request.url)||'';
+ if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(url)){
+  // A response-header hook must not send body fields as rewrite output.
+  if(typeof $response!=='undefined'&&$response&&$response.headers&&typeof $response.body!=='string')return $done({});
+  if(/serviceDir=activity\/sign\/signIn(?:&|$)/i.test(url)&&
+     typeof $request.body==='string')return $done({body:$request.body});
+  if(/service=mina\.decryptCode(?:&|$)/i.test(url)&&
+     typeof $response!=='undefined'&&$response&&typeof $response.body==='string')
+   return $done({body:$response.body});
+ }
+ $done({});
+}
 function header(o,n){const k=Object.keys(o||{}).find(x=>x.toLowerCase()===n);return k?String(o[k]):'';}
 function extract(s){
  const out={};for(const n of sf.names){
@@ -17,21 +32,38 @@ function extract(s){
 function complete(c){return sf.names.every(n=>typeof c[n]==='string'&&c[n].length>0);}
 function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(16);}
 function note(title,message){log(title);if(typeof $notify==='function')$notify('青龙采集 v'+V,title,message);}
+function probeByd(){
+ // Host-level reachability diagnostic, with no URLs, headers or credentials logged.
+ const now=Date.now(), last=Number(get('bydhy_probe_at'))||0;
+ put('bydhy_seen_at',new Date(now).toISOString());
+ if(!get('bydhy_enc')&&now-last>600000){
+  put('bydhy_probe_at',String(now));
+  note('比亚迪域名已命中','QX HTTPS 拦截有效；尚未捕获到登录/签到请求体');
+ }
+}
 function captureByd(url){
  if(get('armed')==='0' || get('bydhy_armed')==='0'){log('BYD capture paused');return done();}
  const login=/^https:\/\/mina\.bydoceanauto\.com\/\?service=mina\.decryptCode(?:&|$)/i.test(url);
  const signing=/^https:\/\/mina\.bydoceanauto\.com\/\?s=ForCommonUcSrv\.forward&serviceDir=activity\/sign\/signIn(?:&|$)/i.test(url);
- if(!login&&!signing)return done();
+ if(!login&&!signing){
+  if(typeof $response!=='undefined'&&$response&&$response.headers)probeByd();
+  return done();
+ }
  const method=String(($request&&$request.method)||'').toUpperCase();
  if(method&&method!=='POST')return done();
  // Sign-in request body already contains the AES-encrypted session_id.
  // Capture the outgoing body before the server handles the daily sign; do not replay it.
  const body=String(signing?($request&&$request.body||''):(typeof $response!=='undefined'&&$response?$response.body:'')||'').trim();
- if(!body||body.length>16384||!/^[A-Za-z0-9+/=]+$/.test(body)){
+ if(!body){
+  if(typeof $response!=='undefined'&&$response&&$response.headers)probeByd();
+  return done();
+ }
+ if(body.length>16384||!/^[A-Za-z0-9+/=]+$/.test(body)){
   note('比亚迪加密数据格式不匹配','检查 QX 请求体及重写命中情况');return done();
  }
  if(get('bydhy_enc')===body){log('BYD response unchanged');return done();}
  const saved=put('bydhy_enc',body);
+ put('bydhy_seen_at',new Date().toISOString());
  if(saved){
   put('bydhy_at',new Date().toISOString());
   note('比亚迪凭据候选已保存',signing?'签到请求已捕获，QX 本地保存；未重放签到，也未同步青龙':'登录响应已捕获，QX 本地保存；未同步青龙');
