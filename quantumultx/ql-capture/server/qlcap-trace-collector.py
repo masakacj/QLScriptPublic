@@ -7,7 +7,7 @@ No raw request/response data is written to disk, logs, or GitHub.
 """
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, parse_qsl
@@ -30,7 +30,7 @@ MAX_BODY_CHARS = 1024 * 1024
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 MAX_EVENTS = 350
 MAX_MINUTES = 15
-RETENTION_AFTER_CAPTURE_SECONDS = 20 * 60
+RETENTION_AFTER_CAPTURE_SECONDS = 60 * 60
 STAGES = frozenset({"request_headers", "request_body", "response_headers", "response_body"})
 TRACE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z._:-]{1,96}$")
 
@@ -69,6 +69,16 @@ class TraceState:
         self.events = deque()
         self.total_bytes = 0
         self.captured = 0
+        self.stage_counts = Counter()
+        self.last_completed = None
+
+    def _archive_metrics(self):
+        # Retain only aggregate phase counts, never URLs, credentials or bodies.
+        if self.captured:
+            self.last_completed = {
+                'events': self.captured,
+                'stages': dict(self.stage_counts),
+                'closed_at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
 
     def arm(self, hostname, minutes):
         if hostname not in ALLOWED_HOSTS:
@@ -76,9 +86,11 @@ class TraceState:
         if not 1 <= minutes <= MAX_MINUTES:
             raise ValueError("invalid duration")
         with self.lock:
+            self._archive_metrics()
             self.events.clear()
             self.total_bytes = 0
             self.captured = 0
+            self.stage_counts.clear()
             self.host = hostname
             self.until = time.time() + minutes * 60
             self.purge_at = self.until + RETENTION_AFTER_CAPTURE_SECONDS
@@ -86,20 +98,24 @@ class TraceState:
 
     def stop(self):
         with self.lock:
+            self._archive_metrics()
             self.until = 0.0
             self.purge_at = 0.0
             self.host = None
             self.events.clear()
             self.total_bytes = 0
             self.captured = 0
+            self.stage_counts.clear()
             return self.status()
 
     def active(self):
         # New capture is disabled at until, but data is retained briefly for analysis.
         if self.host and time.time() >= self.purge_at:
+            self._archive_metrics()
             self.events.clear()
             self.total_bytes = 0
             self.captured = 0
+            self.stage_counts.clear()
             self.host = None
             self.until = 0.0
             self.purge_at = 0.0
@@ -111,6 +127,7 @@ class TraceState:
                     "remaining_seconds": max(0, int(self.until - time.time())),
                     "retained_seconds": max(0, int(self.purge_at - time.time())),
                     "events": len(self.events), "memory_bytes": self.total_bytes,
+                    "stages": dict(self.stage_counts), "last_completed": self.last_completed,
                     "storage": "RAM_only", "raw_available_publicly": False}
 
     def ingest(self, event):
@@ -144,6 +161,7 @@ class TraceState:
             self.events.append(event)
             self.total_bytes += size
             self.captured += 1
+            self.stage_counts[stage] += 1
             return {"accepted": True, "stage": stage, "count": self.captured}
 
     def raw(self):
