@@ -22,7 +22,7 @@ try{
    if(code===200&&typeof data.dry_run==='boolean'){
     note('网关可用 · '+(Date.now()-began)+'ms',
      '模式：'+(data.dry_run?'DRY_RUN':'正式写入')+' · 采集：'+(read('armed')==='1'?'开启':'关闭')+
-     ' · 平台：'+(Array.isArray(data.services)?data.services.join(', '):'未知')+
+     ' · 比亚迪：'+(read('bydhy_enc')?'本地已抓取（未同步青龙）':'待抓取')+' · 平台：'+(Array.isArray(data.services)?data.services.join(', '):'未知')+
      (Array.isArray(data.recovery)&&data.recovery.length?' · 自动恢复：'+data.recovery.map(x=>x.service+'/'+x.result+(typeof x.points_delta==='number'?'/积分'+x.points_delta:'')).join(','):' · 自动恢复：无待处理'));
    }else if(code===401)note('鉴权失败','HTTP 401，请重新绑定密钥');
    else note('检查失败','HTTP '+code+'；未修改任何设置');

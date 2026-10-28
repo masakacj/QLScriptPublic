@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.3.1',P='qlcap_v1_';
+const V='1.4.0',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -17,12 +17,31 @@ function extract(s){
 function complete(c){return sf.names.every(n=>typeof c[n]==='string'&&c[n].length>0);}
 function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return(h>>>0).toString(16);}
 function note(title,message){log(title);if(typeof $notify==='function')$notify('青龙采集 v'+V,title,message);}
+function captureByd(url){
+ if(get('armed')==='0' || get('bydhy_armed')==='0'){log('BYD capture paused');return done();}
+ if(!/^https:\/\/mina\.bydoceanauto\.com\/\?service=mina\.decryptCode(?:&|$)/i.test(url))return done();
+ const method=String(($request&&$request.method)||'').toUpperCase();
+ if(method&&method!=='POST')return done();
+ if(typeof $response==='undefined'||!$response)return done();
+ const body=String($response.body||'').trim();
+ if(!body||body.length>16384||!/^[A-Za-z0-9+/=]+$/.test(body)){
+  note('比亚迪登录响应格式不匹配','未保存凭据');return done();
+ }
+ if(get('bydhy_enc')===body){log('BYD response unchanged');return done();}
+ const saved=put('bydhy_enc',body);
+ if(saved){
+  put('bydhy_at',new Date().toISOString());
+  note('比亚迪登录响应已保存','QX 本地抓取成功；青龙尚未同步');
+ }else note('比亚迪保存失败','未修改青龙');
+ done();
+}
 function main(){
  log('hook triggered');
+ const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
+ if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(source))return captureByd(source);
  if(get('armed')==='0'){log('skipped: capture paused');return done();}
  const server=get('url').replace(/\/+$/,''),token=get('token');
  if(!/^https:\/\/[^/]+$/i.test(server)||token.length<32){log('skipped: setup absent');return done();}
- const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
  const m=/^https:\/\/([^/?#]+)(\/[^?#]*)/i.exec(source);
  if(!m||m[1].toLowerCase()!==sf.host||!sf.paths.some(p=>m[2].startsWith(p))){
   log('skipped: source not on allowlist');return done();
