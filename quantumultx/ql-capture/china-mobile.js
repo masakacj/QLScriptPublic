@@ -8,7 +8,7 @@ function read(k){return $prefs.valueForKey(P+k)||'';}
 function end(){$done({});}
 try{
  const req=typeof $request!=='undefined'?$request:null;
- if(!req||!/^https:\/\/wx\.10086\.cn\/qwhdhub\/api\//i.test(req.url||'')||
+ if(!req||String(req.method||'').toUpperCase()!=='POST'||!/^https:\/\/wx\.10086\.cn\/qwhdhub\/api\/mark\/mark31\/domark(?:\?|$)/i.test(req.url||'')||
     read('armed')!=='1'||Number(read('trace_until'))<=Date.now()||read('trace_host')!==HOST)return end();
  const hs=req.headers||{};
  const key=Object.keys(hs).find(k=>k.toLowerCase()==='cookie');
