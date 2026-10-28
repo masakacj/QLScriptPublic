@@ -6,6 +6,7 @@
 const P='qlcap_v1_',HOST='wx.10086.cn',GATEWAY='https://qlcap.781751.xyz:58443';
 function read(k){return $prefs.valueForKey(P+k)||'';}
 function end(){$done({});}
+(function(){
 try{
  const req=typeof $request!=='undefined'?$request:null;
  if(!req||String(req.method||'').toUpperCase()!=='POST'||!/^https:\/\/wx\.10086\.cn\/qwhdhub\/api\/mark\/mark31\/domark(?:\?|$)/i.test(req.url||'')||
@@ -29,3 +30,4 @@ try{
       end();
     }).catch(()=>{$prefs.setValueForKey('network-error',P+'chinaMobile_last_result');end();});
 }catch(e){end();}
+})();
