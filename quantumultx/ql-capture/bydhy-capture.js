@@ -4,7 +4,7 @@
  * To enable QL sync, the gateway must first implement validated service=bydhy.
  */
 "use strict";
-const P="qlcap_v1_", V="1.0.0";
+const P="qlcap_v1_", V="1.0.1";
 function log(message){if(typeof console!=="undefined"&&console.log)console.log("[BYDHY Capture "+V+"] "+message);}
 function finish(){ $done({}); }
 function note(title,text){if(typeof $notify==="function")$notify("比亚迪海洋采集",title,text);}
@@ -13,7 +13,7 @@ function main(){
   const url=String(($request&&$request.url)||"");
   if(!/^https:\/\/mina\.bydoceanauto\.com\/\?service=mina\.decryptCode(?:&|$)/i.test(url)){return finish();}
   const method=String(($request&&$request.method)||"").toUpperCase();
-  if(method!=="POST"){log("non-POST ignored");return finish();}
+  if(method&&method!=="POST"){log("non-POST ignored");return finish();}
   if(typeof $response==="undefined"||!$response){log("response unavailable");return finish();}
   const body=String($response.body||"").trim();
   if(!body || body.length>16384 || !/^[a-zA-Z0-9+/=]+$/.test(body)){
