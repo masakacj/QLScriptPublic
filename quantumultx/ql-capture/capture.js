@@ -80,6 +80,11 @@ function handleBydTrace(url,stage){
  const responseBody=typeof resp.body==='string'?resp.body:null;
  const isSign=/[?&]s=ForCommonUcSrv\.forward(?:&|$)/.test(url)&&/[?&]serviceDir=activity\/sign\/signIn(?:&|$)/.test(url);
  const isLogin=/[?&]service=mina\.decryptCode(?:&|$)/.test(url);
+ if(stage==='reqb'||stage==='rsb'){
+  put('bydhy_seen_at',new Date().toISOString());
+  put('bydhy_body_seen_at',new Date().toISOString());
+  put('bydhy_body_last_stage',stage);
+ }
  if(stage==='reqh'){
   put('bydhy_seen_at',new Date().toISOString());
   if(Date.now()>=(Number(get('trace_until'))||0))probeByd();
@@ -109,8 +114,8 @@ function handleBydTrace(url,stage){
   method:req.method?String(req.method).toUpperCase():null,
   at:Date.now()
  };
- if(stage==='reqh')obj.headers=headersForTrace(req.headers);
- if(stage==='rsh'){
+ if(stage==='reqh'||stage==='reqb')obj.headers=headersForTrace(req.headers);
+ if(stage==='rsh'||stage==='rsb'){
   obj.headers=headersForTrace(resp.headers);
   const v=Number(resp.statusCode);if(Number.isFinite(v))obj.status=v;
  }

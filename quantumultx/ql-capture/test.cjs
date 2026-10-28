@@ -110,7 +110,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
   hit=await passiveProbe({response:true});
   assert(hit.store.qlcap_v1_bydhy_seen_at);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=reqh'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=reqb'));
   console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
@@ -155,8 +155,16 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
    assert(!t.notifications.join(' ').includes(t.secret));
    if(phase==='reqh')assert.equal(sent.headers.Authorization,'Bearer '+t.secret);
    if(phase==='rsh')assert.equal(sent.headers['Set-Cookie'],'sid='+t.secret);
-   if(phase==='reqb')assert.equal(t.result.body,t.original);
-   if(phase==='rsb')assert.equal(t.result.body,t.original);
+   if(phase==='reqb'){
+    assert.equal(t.result.body,t.original);
+    assert.equal(sent.headers.Authorization,'Bearer '+t.secret);
+    assert(t.prefs.qlcap_v1_bydhy_body_seen_at);
+   }
+   if(phase==='rsb'){
+    assert.equal(t.result.body,t.original);
+    assert.equal(sent.headers['Set-Cookie'],'sid='+t.secret);
+    assert.equal(sent.status,201);
+   }
   }
   let inactive=await runFourPhase('reqb',{active:false});
   assert.equal(inactive.uploads.length,0);
@@ -164,6 +172,10 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   inactive=await runFourPhase('reqh',{url:'https://other.example.com/'});
   assert.equal(inactive.uploads.length,0);
   assert(!inactive.notifications.join(' ').includes('USER_SECRET'));
+  const bydrules=fs.readFileSync(__dirname+'/rewrite.conf','utf8').split('\n').filter(x=>x.includes('mina\\.bydoceanauto'));
+  assert.equal(bydrules.filter(x=>x.includes('script-request-body')).length,1);
+  assert.equal(bydrules.filter(x=>x.includes('script-response-body')).length,1);
+  assert(!bydrules.some(x=>x.includes('script-request-header')||x.includes('script-response-header')));
   console.log('PASS QX four-phase HTTP capture, exact-domain/TTL gating, unchanged bodies, safe notifications');
   // Existing QL Arm must only enable 10m debug when the server has explicitly armed it.
   const armScript=fs.readFileSync(__dirname+'/arm.js','utf8');
