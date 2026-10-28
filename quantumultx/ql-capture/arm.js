@@ -2,7 +2,7 @@
  * the server collector is armed, and expires within 10 minutes.
  */
 'use strict';
-const V='1.5.0',P='qlcap_v1_';
+const V='1.5.2',P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Arm v'+V+'] '+x);}
 function notify(title,msg){if(typeof $notify==='function')$notify('青龙采集 v'+V,title,msg);}
 function done(){$done({});}
@@ -25,7 +25,11 @@ try{
       const seconds=Math.min(600,Math.floor(Number(v.remaining_seconds)));
       $prefs.setValueForKey(String(Date.now()+seconds*1000),P+'trace_until');
       $prefs.setValueForKey('0',P+'trace_sent_count');
-      $prefs.setValueForKey('',P+'trace_last_result');
+      $prefs.setValueForKey('0',P+'trace_attempt_count');
+      $prefs.setValueForKey('0',P+'trace_failed_count');
+      $prefs.setValueForKey('',P+'trace_last_sent');
+      $prefs.setValueForKey('',P+'trace_last_attempt_at');
+      $prefs.setValueForKey('未开始',P+'trace_last_result');
       notify('持续采集和深度诊断已开启','比亚迪 HTTP 请求/响应将限时采集 '+seconds+' 秒；仅供受控分析');
      }else notify('持续采集已开启','顺丰及比亚迪正常采集开启；深度诊断未启用');
      done();
