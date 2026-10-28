@@ -30,6 +30,7 @@ MAX_BODY_CHARS = 1024 * 1024
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 MAX_EVENTS = 350
 MAX_MINUTES = 15
+RETENTION_AFTER_CAPTURE_SECONDS = 20 * 60
 STAGES = frozenset({"request_headers", "request_body", "response_headers", "response_body"})
 TRACE_ID_PATTERN = re.compile(r"^[0-9a-zA-Z._:-]{1,96}$")
 
@@ -63,6 +64,7 @@ class TraceState:
     def __init__(self):
         self.lock = threading.RLock()
         self.until = 0.0
+        self.purge_at = 0.0
         self.host = None
         self.events = deque()
         self.total_bytes = 0
@@ -79,11 +81,13 @@ class TraceState:
             self.captured = 0
             self.host = hostname
             self.until = time.time() + minutes * 60
+            self.purge_at = self.until + RETENTION_AFTER_CAPTURE_SECONDS
             return self.status()
 
     def stop(self):
         with self.lock:
             self.until = 0.0
+            self.purge_at = 0.0
             self.host = None
             self.events.clear()
             self.total_bytes = 0
@@ -91,18 +95,21 @@ class TraceState:
             return self.status()
 
     def active(self):
-        if self.host and time.time() >= self.until:
+        # New capture is disabled at until, but data is retained briefly for analysis.
+        if self.host and time.time() >= self.purge_at:
             self.events.clear()
             self.total_bytes = 0
             self.captured = 0
             self.host = None
             self.until = 0.0
+            self.purge_at = 0.0
         return bool(self.host and time.time() < self.until)
 
     def status(self):
         with self.lock:
             return {"active": self.active(), "host": self.host if self.active() else None,
                     "remaining_seconds": max(0, int(self.until - time.time())),
+                    "retained_seconds": max(0, int(self.purge_at - time.time())),
                     "events": len(self.events), "memory_bytes": self.total_bytes,
                     "storage": "RAM_only", "raw_available_publicly": False}
 
