@@ -37,5 +37,33 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   x=await run('status',{prefs:old});assert.equal(x.calls,1);assert(x.notifications.join(' ').includes('DRY_RUN'));
   x=await run('status',{prefs:old,answer:{statusCode:401,body:'{"error":"unauthorized"}'}});assert(x.notifications.join(' ').includes('401'));
   x=await run('status',{prefs:old,reject:true});assert(x.notifications.join(' ').includes('网络异常'));
+
+  const unified=fs.readFileSync(__dirname+'/capture.js','utf8');
+  async function testUnified(url,responseBody,armed='1'){
+   const store={qlcap_v1_armed:armed,qlcap_v1_bydhy_armed:armed};
+   const notices=[];let resolveDone;
+   const done=new Promise(r=>resolveDone=r);
+   const sandbox={
+    $request:{url,method:'POST',headers:{}},
+    $response:{body:responseBody,headers:{}},
+    $prefs:{valueForKey:k=>store[k]||'',setValueForKey:(v,k)=>(store[k]=v,true)},
+    $notify:(...args)=>notices.push(args.join(' ')),
+    $done:()=>resolveDone(),
+    console:{log:()=>{}}
+   };
+   vm.runInNewContext(unified,sandbox,{timeout:1200});
+   await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(new Error('capture did not finish')),800))]);
+   return {store,notices};
+  }
+  let y=await testUnified('https://mina.bydoceanauto.com/?service=mina.decryptCode','YWJjZA==');
+  assert.equal(y.store.qlcap_v1_bydhy_enc,'YWJjZA==');
+  assert(!y.notices.join(' ').includes('YWJjZA=='));
+  y=await testUnified('https://mina.bydoceanauto.com/?service=mina.decryptCode','YWJjZA==','0');
+  assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
+  y=await testUnified('https://invalid.example/?service=mina.decryptCode','YWJjZA==');
+  assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
+  console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
+
   console.log('PASS 8 simulated QX setup/status flows; all notifications avoid tokens');
 })().catch(e=>{console.error(e);process.exitCode=1;});
