@@ -102,15 +102,15 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
    vm.runInNewContext(unified,sandbox,{timeout:1500});
    return {store,notices,returned};
   }
-  let hit=await passiveProbe();
+  let hit=await passiveProbe({response:false});
   assert(hit.store.qlcap_v1_bydhy_seen_at);
   assert(hit.notices.join(' ').includes('比亚迪域名已命中'));
   assert.equal(hit.returned.body,undefined);
   hit=await passiveProbe({armed:false});
   assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
-  hit=await passiveProbe({response:false});
-  assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
+  hit=await passiveProbe({response:true});
+  assert(hit.store.qlcap_v1_bydhy_seen_at);
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
   console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
