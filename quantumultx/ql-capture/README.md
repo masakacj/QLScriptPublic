@@ -119,3 +119,23 @@ Portainer（127）Stack `ql-capture-gateway`、青龙（233）独立 `envs` 应�
 使用现有 **QL Arm** 开启持续抓取，打开比亚迪海洋微信小程序触发 `POST https://mina.bydoceanauto.com/?service=mina.decryptCode`。抓到合法 AES/Base64 响应后提示「比亚迪登录响应已保存」；在现有 **QL Status** 中可以看到「比亚迪：本地已抓取（未同步青龙）」。该测试版仅保存至 QX 本机偏好设置，不自动上传到网关或青龙。
 
 目前 `qlcap.781751.xyz` 的 QX 静态镜像若尚未同步，需要先在服务端刷新镜像，**仅刷新手机旧镜像不会自动获取 GitHub 的最新代码**。可以暂时把已有 Rewrite 资源 URL 切换为 GitHub Raw 的 `https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/rewrite.conf`（替换现有 URL，不是额外新增资源），确保刷新成功后继续测试。
+## 完整 HTTP 请求/响应链路诊断（BYD 首批支持）
+
+该能力复用现有 **QL Arm / QL Status / QL Disarm + capture.js + rewrite.conf**，无须向 QX 添加其他 JS 文件或任务。新建独立的受认证诊断服务，和正常的青龙变量同步逻辑隔离。
+
+- 适用范围：仅在 MitM 白名单内的 `mina.bydoceanauto.com`；不能监听任意手机 App 或整个网络。
+- 阶段：请求头、请求体、响应头、响应体。QX 使用 `sessionIndex` 关联同一次请求；缺失则标识关联不确定。
+- 内容：URL、方法、HTTP 状态、全部可获取的文本请求与响应正文、相关请求与响应头。大于 QX 或采集端限制的正文会标明截断；空正文和二进制正文可能无法由 Rewrite 完整获取。
+- 安全：两端分别确认后，**最多 10 分钟**上传；接收端只存内存、限量、过期删除；不在通知、GitHub、一般 QX 日志或普通公网 API 中输出原文。
+- 解密：小程序自身 AES 加密的正文保留原文，由 mcpdebian 的授权分析程序在内存中解码，返回脱敏的字段结构和业务结果。
+
+### 开始一次调试
+
+1. 管理端通过 mcpdebian/Portainer 对指定域名启动 10 分钟采集窗口（服务器默认关闭）。
+2. QX 刷新当前唯一的 Rewrite 资源和同名远程脚本，不覆盖主配置/CA 证书。
+3. 执行**原有的 QL Arm**；只有服务器已开启诊断时，手机才开启相应的短期上传窗口。
+4. 打开目标小程序，按平常流程访问「我的」「积分」等页面；已签到的当天**不要再次签到**。
+5. 运行原有 **QL Status**，检查「深度诊断剩余秒数」和「已上传事件数」；管理端使用私有诊断命令查看请求/响应关联数据。
+6. 结束时运行 **QL Disarm**，并由管理端关闭服务器会话（立即清空内存中的捕获数据）；自然过期也会自动清理。
+
+已授权的真实会话及请求头可能包含 Cookie、手机号和身份令牌，请勿把 HTTP Analyzer 原文截图或捕获数据提交到公开仓库。调试仅限自己有权限访问的账户和服务。
