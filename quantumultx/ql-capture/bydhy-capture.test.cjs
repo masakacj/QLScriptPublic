@@ -15,5 +15,6 @@ x=run({url:"https://mina.bydoceanauto.com/?service=other"});assert.equal(x.vars.
 x=run({body:"not base64<>"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
 x=run({response:false});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
 x=run({method:"GET"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
+x=run({method:""});assert.equal(x.vars.qlcap_v1_bydhy_enc,"YWJjZA==");
 assert(!run().notifications.join(" ").includes("YWJjZA=="));
-console.log("PASS 8 BYD Ocean QX capture tests (local-only, no secret notification)");
+console.log("PASS 9 BYD Ocean QX capture tests (local-only, no secret notification)");
