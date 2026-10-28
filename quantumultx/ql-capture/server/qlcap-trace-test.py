@@ -54,6 +54,11 @@ class StateTests(unittest.TestCase):
     def test_expiry_purges_raw(self):
         self.s.ingest(EVENT)
         self.s.until=time.time()-1
+        self.assertFalse(self.s.active())
+        # Capture ends, but events remain briefly available for analysis.
+        self.assertEqual(len(self.s.raw()),1)
+        with self.assertRaises(PermissionError):self.s.ingest(EVENT)
+        self.s.purge_at=time.time()-1
         self.assertEqual(self.s.raw(),[])
         self.assertEqual(self.s.status()["events"],0)
     def test_bounds(self):
