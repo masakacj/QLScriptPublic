@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.4.2',P='qlcap_v1_';
+const V='1.4.3',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -46,7 +46,8 @@ function captureByd(url){
  const login=/^https:\/\/mina\.bydoceanauto\.com\/\?service=mina\.decryptCode(?:&|$)/i.test(url);
  const signing=/^https:\/\/mina\.bydoceanauto\.com\/\?s=ForCommonUcSrv\.forward&serviceDir=activity\/sign\/signIn(?:&|$)/i.test(url);
  if(!login&&!signing){
-  if(typeof $response!=='undefined'&&$response&&$response.headers)probeByd();
+  // Request-header hooks have no $response; still record the hostname hit.
+  probeByd();
   return done();
  }
  const method=String(($request&&$request.method)||'').toUpperCase();
@@ -55,7 +56,8 @@ function captureByd(url){
  // Capture the outgoing body before the server handles the daily sign; do not replay it.
  const body=String(signing?($request&&$request.body||''):(typeof $response!=='undefined'&&$response?$response.body:'')||'').trim();
  if(!body){
-  if(typeof $response!=='undefined'&&$response&&$response.headers)probeByd();
+  // Empty request/response bodies are not credential failures.
+  probeByd();
   return done();
  }
  if(body.length>16384||!/^[A-Za-z0-9+/=]+$/.test(body)){
@@ -71,7 +73,6 @@ function captureByd(url){
  done();
 }
 function main(){
- log('hook triggered');
  const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
  if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(source))return captureByd(source);
  if(get('armed')==='0'){log('skipped: capture paused');return done();}
