@@ -18,3 +18,21 @@ x=run({method:"GET"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
 x=run({method:""});assert.equal(x.vars.qlcap_v1_bydhy_enc,"YWJjZA==");
 assert(!run().notifications.join(" ").includes("YWJjZA=="));
 console.log("PASS 9 BYD Ocean QX capture tests (local-only, no secret notification)");
+
+const toggleSrc=fs.readFileSync(__dirname+"/bydhy-toggle.js","utf8");
+const accountState={"qlcap_v1_bydhy_armed":"0"};
+const toggleNotify=[];
+function toggle(){
+ let done=0;
+ vm.runInNewContext(toggleSrc,{
+  $prefs:{valueForKey:k=>accountState[k]||"",setValueForKey:(v,k)=>(accountState[k]=v,true)},
+  $notify:(...v)=>toggleNotify.push(v.join(" ")),
+  $done:()=>done++,
+ },{timeout:1000});
+ assert.equal(done,1);
+}
+toggle();assert.equal(accountState.qlcap_v1_bydhy_armed,"1");
+toggle();assert.equal(accountState.qlcap_v1_bydhy_armed,"0");
+assert(!toggleNotify.join(" ").includes("YWJjZA=="));
+console.log("PASS 2 BYD toggle simulations (does not touch SF state)");
+
