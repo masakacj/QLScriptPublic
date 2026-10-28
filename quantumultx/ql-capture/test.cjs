@@ -62,7 +62,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
   y=await testUnified('https://invalid.example/?service=mina.decryptCode','YWJjZA==');
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=rsb'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js?v=151#trace=rsb'));
   // Actual sign-in request body is encrypted; collecting it must not execute a new sign-in.
   const signPath='https://mina.bydoceanauto.com/?s=ForCommonUcSrv.forward&serviceDir=activity/sign/signIn';
   async function testSignRequest(armed='1') {
@@ -110,7 +110,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
   hit=await passiveProbe({response:true});
   assert(hit.store.qlcap_v1_bydhy_seen_at);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=reqb'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js?v=151#trace=reqb'));
   console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
