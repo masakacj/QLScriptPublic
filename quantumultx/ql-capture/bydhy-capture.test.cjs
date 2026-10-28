@@ -2,7 +2,7 @@
 const fs=require("node:fs"), vm=require("node:vm"), assert=require("node:assert/strict");
 const src=fs.readFileSync(__dirname+"/bydhy-capture.js","utf8");
 function run({armed="1",url="https://mina.bydoceanauto.com/?service=mina.decryptCode",body="YWJjZA==",method="POST",response=true}={}){
- const vars={"qlcap_v1_armed":armed}, notifications=[];let done=0;
+ const vars={"qlcap_v1_bydhy_armed":armed}, notifications=[];let done=0;
  const sandbox={$prefs:{valueForKey:k=>vars[k]||"",setValueForKey:(v,k)=>(vars[k]=v,true)},$request:{url,method},$notify:(...v)=>notifications.push(v.join(" ")),$done:()=>done++,console:{log:()=>{}}};
  if(response)sandbox.$response={body};
  vm.runInNewContext(src,sandbox,{timeout:1000});
