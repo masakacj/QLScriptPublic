@@ -1498,6 +1498,8 @@ function formatBodyFun(contentType, body) {
  * @returns {Promise<unknown>}
  */
 async function sendNotify(text, desp, params = {}) {
+    if (process.env.QL_SUMMARY_ONLY === '1' && process.env.QL_SUMMARY_SENDING !== '1') return;
+
     // 根据标题跳过一些消息推送，环境变量：SKIP_PUSH_TITLE 用回车分隔
     let skipTitle = process.env.SKIP_PUSH_TITLE;
     if (skipTitle) {

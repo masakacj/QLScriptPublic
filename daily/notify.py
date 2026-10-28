@@ -1069,6 +1069,10 @@ def add_notify_function():
 
 
 def send(title: str, content: str, ignore_default_config: bool = False, **kwargs):
+    import os as _ql_os
+    if _ql_os.environ.get('QL_SUMMARY_ONLY')=='1' and _ql_os.environ.get('QL_SUMMARY_SENDING')!='1':
+        return
+
     if kwargs:
         global push_config
         if ignore_default_config:
