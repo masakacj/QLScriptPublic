@@ -1,6 +1,6 @@
 /* QX: explicit SF request/response header capture. Do not log headers or secrets. */
 'use strict';
-const V='1.5.1',P='qlcap_v1_';
+const V='1.5.2',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -84,6 +84,8 @@ function handleBydTrace(url,stage){
   put('bydhy_seen_at',new Date().toISOString());
   put('bydhy_body_seen_at',new Date().toISOString());
   put('bydhy_body_last_stage',stage);
+  if(stage==='reqb')put('bydhy_reqb_seen_at',new Date().toISOString());
+  if(stage==='rsb')put('bydhy_rsb_seen_at',new Date().toISOString());
  }
  if(stage==='reqh'){
   put('bydhy_seen_at',new Date().toISOString());
