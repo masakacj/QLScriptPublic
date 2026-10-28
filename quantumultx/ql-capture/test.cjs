@@ -110,7 +110,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
   hit=await passiveProbe({response:true});
   assert(hit.store.qlcap_v1_bydhy_seen_at);
-  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=reqh'));
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-request-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js#trace=reqb'));
   console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
