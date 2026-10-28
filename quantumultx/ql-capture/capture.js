@@ -80,13 +80,13 @@ function handleBydTrace(url,stage){
  const responseBody=typeof resp.body==='string'?resp.body:null;
  const isSign=/[?&]s=ForCommonUcSrv\.forward(?:&|$)/.test(url)&&/[?&]serviceDir=activity\/sign\/signIn(?:&|$)/.test(url);
  const isLogin=/[?&]service=mina\.decryptCode(?:&|$)/.test(url);
- if(stage==='reqh')probeByd();
+ if(stage==='reqh'){
+  put('bydhy_seen_at',new Date().toISOString());
+  if(Date.now()>=(Number(get('trace_until'))||0))probeByd();
+ }
  if(stage==='reqb'&&validB64(requestBody)){
   if(isSign){
    if(put('bydhy_enc',requestBody)){put('bydhy_at',new Date().toISOString());note('比亚迪凭据候选已保存','签到请求体已捕获，仅保存在 QX 本地');}
-  }else{
-   // May contain a session_id but is not verified; never overwrite the primary credential.
-   put('bydhy_other_enc',requestBody);
   }
  }
  if(stage==='rsb'&&isLogin&&validB64(responseBody)&&get('bydhy_enc')!==responseBody){
@@ -106,7 +106,7 @@ function handleBydTrace(url,stage){
   v:1, stage:phases[stage], url:url,
   session_index:req.sessionIndex!==undefined?String(req.sessionIndex):
    resp.sessionIndex!==undefined?String(resp.sessionIndex):null,
-  method:String(req.method||'GET').toUpperCase(),
+  method:req.method?String(req.method).toUpperCase():null,
   at:Date.now()
  };
  if(stage==='reqh')obj.headers=headersForTrace(req.headers);
