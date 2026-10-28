@@ -222,7 +222,7 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
      }
      if(x.url.endsWith('/trace/v1/activate')){
       assert.equal(x.method,'POST');
-      assert.equal(JSON.parse(x.body).host,'mina.bydoceanauto.com');
+      assert(['mina.bydoceanauto.com','wx.10086.cn'].includes(JSON.parse(x.body).host));
       if(!activationResponse)throw Error('Unexpected activation request');
       return activationResponse;
      }
@@ -268,6 +268,46 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert(arm.notifications.join(' ').includes('HTTP 409'));
   assert(!arm.notifications.join(' ').includes(TOKEN));
   console.log('PASS QL Arm deferred one-time server activation, no unprepared/failed recording');
+  const mobilePrep=JSON.stringify({active:false,prepared:true,prepared_host:'wx.10086.cn',prepared_remaining_seconds:500});
+  const mobileActive=JSON.stringify({active:true,host:'wx.10086.cn',remaining_seconds:598});
+  arm=await armWith({statusCode:200,body:mobilePrep},{statusCode:200,body:mobileActive});
+  assert.equal(arm.calls.length,2);
+  assert.equal(arm.prefs.qlcap_v1_trace_host,'wx.10086.cn');
+  assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
+  assert(arm.notifications.join(' ').includes('中国移动 Cookie'));
+  const mobileScript=fs.readFileSync(__dirname+'/china-mobile.js','utf8');
+  async function mobileHook(url,cookie,armed=true){
+   const prefs={
+    qlcap_v1_armed:'1',qlcap_v1_trace_until:armed?String(Date.now()+60000):'0',
+    qlcap_v1_trace_host:'wx.10086.cn',
+    qlcap_v1_url:'https://qlcap.781751.xyz:58443',qlcap_v1_token:TOKEN
+   };
+   const uploads=[];
+   let resolver;const done=new Promise(r=>resolver=r);
+   vm.runInNewContext(mobileScript,{
+    $request:{url,method:'POST',headers:{Cookie:cookie,'User-Agent':'private-device'}},
+    $prefs:{valueForKey:k=>prefs[k]||'',setValueForKey:(v,k)=>{prefs[k]=v;return true;}},
+    $task:{fetch:async e=>{uploads.push(JSON.parse(e.body));return {statusCode:200};}},
+    $done:()=>resolver(),console:{log:()=>{}}
+   },{timeout:1500});
+   await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(Error('QX mobile timeout')),1200))]);
+   return uploads;
+  }
+  const validCookie='QWHD_SESSION_TOKEN=SIMULATED_TOKEN_ABCDEF0123456; other=private_value';
+  const validUrl='https://wx.10086.cn/qwhdhub/api/mark/mark31/domark';
+  let mobileEvents=await mobileHook(validUrl,validCookie);
+  assert.equal(mobileEvents.length,1);
+  assert.equal(mobileEvents[0].headers.Cookie,'QWHD_SESSION_TOKEN=SIMULATED_TOKEN_ABCDEF0123456');
+  assert(!JSON.stringify(mobileEvents).includes('private_value'));
+  assert(!JSON.stringify(mobileEvents).includes('private-device'));
+  mobileEvents=await mobileHook('https://other.example/qwhdhub/api/mark/mark31/domark',validCookie);
+  assert.equal(mobileEvents.length,0);
+  mobileEvents=await mobileHook(validUrl,validCookie,false);
+  assert.equal(mobileEvents.length,0);
+  mobileEvents=await mobileHook(validUrl,'OtherCookie=foo');
+  assert.equal(mobileEvents.length,0);
+  console.log('PASS China Mobile QX exact-path, cookie-only and expiring trace gate');
+
 
   console.log('PASS 8 simulated QX setup/status flows; all notifications avoid tokens');
 })().catch(e=>{console.error(e);process.exitCode=1;});
