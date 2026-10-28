@@ -131,11 +131,14 @@ Portainer（127）Stack `ql-capture-gateway`、青龙（233）独立 `envs` 应�
 
 ### 开始一次调试
 
-1. 管理端通过 mcpdebian/Portainer 对指定域名启动 10 分钟采集窗口（服务器默认关闭）。
+1. 管理端通过 mcpdebian/Portainer 对指定域名**准备**采集：`sudo python3 /home/devspace/qlcap-trace-deploy.py prepare`，进入最长 2 小时待命，但此时**不采集任何流量**。
 2. QX 刷新当前唯一的 Rewrite 资源和同名远程脚本，不覆盖主配置/CA 证书。
-3. 执行**原有的 QL Arm**；只有服务器已开启诊断时，手机才开启相应的短期上传窗口。
+3. 执行**原有的 QL Arm**：只有服务端仍处于待命时，手机才会消费一次性授权，**此时才真正开始 10 分钟采集**；其他情况下仅开启顺丰/比亚迪普通采集。
 4. 打开目标小程序，按平常流程访问「我的」「积分」等页面；已签到的当天**不要再次签到**。
 5. 运行原有 **QL Status**，检查「正文请求 / 响应最近触发时间」及「上传尝试 / 成功 / 失败 / 最近错误」。即使诊断窗口已经关闭，这些诊断信息仍保留在 QX 本地；管理端可读取受控服务器的阶段统计与关联数据。
 6. 结束时运行 **QL Disarm**，并由管理端关闭服务器会话（立即清空内存中的捕获数据）；自然过期也会自动清理。
+
+使用 `sudo python3 /home/devspace/qlcap-trace-deploy.py status` 验证状态：`prepared: true, active: false` 代表仅待命；`active: true` 代表用户已手动启动采集。准备授权两小时后自行失效，不能无限期接收手机数据。公网只新增带 Bearer 鉴权的 `/trace/v1/activate`，`/_admin/` 和原始数据查询仍不通过 Nginx 暴露。
+
 
 已授权的真实会话及请求头可能包含 Cookie、手机号和身份令牌，请勿把 HTTP Analyzer 原文截图或捕获数据提交到公开仓库。调试仅限自己有权限访问的账户和服务。
