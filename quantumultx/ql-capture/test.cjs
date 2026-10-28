@@ -66,27 +66,52 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   // Actual sign-in request body is encrypted; collecting it must not execute a new sign-in.
   const signPath='https://mina.bydoceanauto.com/?s=ForCommonUcSrv.forward&serviceDir=activity/sign/signIn';
   async function testSignRequest(armed='1') {
-   const store={qlcap_v1_armed:armed}; const notices=[]; let finish;
+   const store={qlcap_v1_armed:armed}; const notices=[]; let finish; let returned;
    const completion=new Promise(resolve=>finish=resolve);
    const sandbox={
     $request:{url:signPath,method:'POST',body:'YWJjZA==',headers:{}},
     $prefs:{valueForKey:k=>store[k]||'',setValueForKey:(v,k)=>(store[k]=v,true)},
     $notify:(...args)=>notices.push(args.join(' ')),
-    $done:()=>finish(),
+    $done:arg=>{returned=arg;finish();}, 
     $task:{fetch:()=>{throw Error('unexpected network request')}},
     console:{log:()=>{}}
    };
    vm.runInNewContext(unified,sandbox,{timeout:1200});
    await Promise.race([completion,new Promise((_,reject)=>setTimeout(()=>reject(Error('capture did not finish')),800))]);
-   return {store,notices};
+   return {store,notices,returned};
   }
   let signResult=await testSignRequest();
   assert.equal(signResult.store.qlcap_v1_bydhy_enc,'YWJjZA==');
+  assert.equal(signResult.returned.body,'YWJjZA==');
   assert(signResult.notices.join(' ').includes('签到请求已捕获'));
   signResult=await testSignRequest('0');
   assert.equal(signResult.store.qlcap_v1_bydhy_enc,undefined);
+  assert.equal(signResult.returned.body,'YWJjZA==');
   assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('script-request-body'));
   console.log('PASS BYD sign request-body capture without extra sign-in');
+  async function passiveProbe({response=true,armed=true}={}){
+   const store=armed?{qlcap_v1_armed:'1'}:{qlcap_v1_armed:'0'};
+   const notices=[];let returned;
+   const sandbox={
+    $request:{url:'https://mina.bydoceanauto.com/?s=ForCommonUcSrv.forward&serviceDir=activity/list',method:'GET',headers:{}},
+    $prefs:{valueForKey:k=>store[k]||'',setValueForKey:(v,k)=>(store[k]=v,true)},
+    $notify:(...args)=>notices.push(args.join(' ')),
+    $done:arg=>returned=arg, console:{log:()=>{}}
+   };
+   if(response)sandbox.$response={headers:{'content-type':'application/json'}};
+   vm.runInNewContext(unified,sandbox,{timeout:1500});
+   return {store,notices,returned};
+  }
+  let hit=await passiveProbe();
+  assert(hit.store.qlcap_v1_bydhy_seen_at);
+  assert(hit.notices.join(' ').includes('比亚迪域名已命中'));
+  assert.equal(hit.returned.body,undefined);
+  hit=await passiveProbe({armed:false});
+  assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
+  hit=await passiveProbe({response:false});
+  assert.equal(hit.store.qlcap_v1_bydhy_seen_at,undefined);
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-header https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
+  console.log('PASS BYD passive host probe and paused-state isolation');
 
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
 
