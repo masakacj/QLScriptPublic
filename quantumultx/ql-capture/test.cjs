@@ -63,6 +63,31 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   y=await testUnified('https://invalid.example/?service=mina.decryptCode','YWJjZA==');
   assert.equal(y.store.qlcap_v1_bydhy_enc,undefined);
   assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('url script-response-body https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/capture.js'));
+  // Actual sign-in request body is encrypted; collecting it must not execute a new sign-in.
+  const signPath='https://mina.bydoceanauto.com/?s=ForCommonUcSrv.forward&serviceDir=activity/sign/signIn';
+  async function testSignRequest(armed='1') {
+   const store={qlcap_v1_armed:armed}; const notices=[]; let finish;
+   const completion=new Promise(resolve=>finish=resolve);
+   const sandbox={
+    $request:{url:signPath,method:'POST',body:'YWJjZA==',headers:{}},
+    $prefs:{valueForKey:k=>store[k]||'',setValueForKey:(v,k)=>(store[k]=v,true)},
+    $notify:(...args)=>notices.push(args.join(' ')),
+    $done:()=>finish(),
+    $task:{fetch:()=>{throw Error('unexpected network request')}},
+    console:{log:()=>{}}
+   };
+   vm.runInNewContext(unified,sandbox,{timeout:1200});
+   await Promise.race([completion,new Promise((_,reject)=>setTimeout(()=>reject(Error('capture did not finish')),800))]);
+   return {store,notices};
+  }
+  let signResult=await testSignRequest();
+  assert.equal(signResult.store.qlcap_v1_bydhy_enc,'YWJjZA==');
+  assert(signResult.notices.join(' ').includes('签到请求已捕获'));
+  signResult=await testSignRequest('0');
+  assert.equal(signResult.store.qlcap_v1_bydhy_enc,undefined);
+  assert(fs.readFileSync(__dirname+'/rewrite.conf','utf8').includes('script-request-body'));
+  console.log('PASS BYD sign request-body capture without extra sign-in');
+
   console.log('PASS unified BYD capture allowlist, pause and no credential leaks');
 
   console.log('PASS 8 simulated QX setup/status flows; all notifications avoid tokens');
