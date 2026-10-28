@@ -13,7 +13,9 @@ function traceStatus(){
 }
 function bydStatus(){
  const last=read('bydhy_seen_at');
- return read('bydhy_enc')?'本地已保存加密凭据（未同步青龙）':last?'域名已命中，尚未获取凭据':'尚未命中域名';
+ const body=read('bydhy_body_seen_at');
+ const status=read('bydhy_enc')?'本地已保存加密凭据（未同步青龙）':last?'域名已命中，尚未获取凭据':'尚未命中域名';
+ return status+'（'+(body?'正文脚本已触发':'正文脚本尚未触发')+'）';
 }
 try{
  log('start');
