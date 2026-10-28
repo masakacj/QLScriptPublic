@@ -109,7 +109,7 @@ function handleBydTrace(url,stage){
   method:req.method?String(req.method).toUpperCase():null,
   at:Date.now()
  };
- if(stage==='reqh')obj.headers=headersForTrace(req.headers);
+ if(stage==='reqh'||stage==='reqb')obj.headers=headersForTrace(req.headers);
  if(stage==='rsh'){
   obj.headers=headersForTrace(resp.headers);
   const v=Number(resp.statusCode);if(Number.isFinite(v))obj.status=v;
