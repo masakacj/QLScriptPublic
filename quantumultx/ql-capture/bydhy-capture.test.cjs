@@ -8,11 +8,11 @@ function run({armed="1",url="https://mina.bydoceanauto.com/?service=mina.decrypt
  vm.runInNewContext(src,sandbox,{timeout:1000});
  return {vars,notifications,done};
 }
-let x=run();assert.equal(x.done,1);assert.equal(x.vars.qlcap_v1_bydhy_enc,"YWJjZA==");assert(x.notifications.join(" ").includes("尚未写入青龙"));
+let x=run();assert.equal(x.done,1);assert.equal(x.vars.qlcap_v1_bydhy_enc,"YWJjZA==");assert(x.notifications.join(" ").includes("尚未写入青龙"));assert(x.vars.qlcap_v1_bydhy_at);
 x=run({armed:"0"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);assert.equal(x.done,1);
 x=run({url:"https://example.com/?service=mina.decryptCode"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
 x=run({url:"https://mina.bydoceanauto.com/?service=other"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
-x=run({body:"not base64<>"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
+x=run({body:"not base64<>"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);assert(x.notifications.join(" ").includes("响应格式不匹配"));
 x=run({response:false});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
 x=run({method:"GET"});assert.equal(x.vars.qlcap_v1_bydhy_enc,undefined);
 x=run({method:""});assert.equal(x.vars.qlcap_v1_bydhy_enc,"YWJjZA==");
