@@ -1,6 +1,6 @@
 /* QX manual status diagnostic - no credentials or cookie values in logs. */
 'use strict';
-const VERSION='1.5.2', P='qlcap_v1_';
+const VERSION='2.0.0', P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Status v'+VERSION+'] '+x);}
 function note(title,msg){log(title+' / '+msg);if(typeof $notify==='function')$notify('青龙采集 v'+VERSION,title,msg);}
 function read(k){return $prefs.valueForKey(P+k)||'';}
@@ -46,8 +46,8 @@ try{
    let data={};try{data=JSON.parse(r.body||'{}');}catch(e){log('response JSON invalid');}
    if(code===200&&typeof data.dry_run==='boolean'){
     note('网关可用 · '+(Date.now()-began)+'ms',
-     '模式：'+(data.dry_run?'DRY_RUN':'正式写入')+' · 采集：'+(read('armed')==='1'?'开启':'关闭')+
-     ' · 比亚迪：'+bydStatus()+' · '+traceStatus()+' · 平台：'+(Array.isArray(data.services)?data.services.join(', '):'未知')+
+     '模式：'+(data.dry_run?'DRY_RUN':'正式写入')+' · 采集：'+(read('armed')==='0'?'暂停':'默认开启')+
+     ' · 夸克：'+(read('quark_last_result')||'尚未抓取')+(read('quark_seen_at')?'（'+age('quark_seen_at')+'）':'')+' · 比亚迪：'+bydStatus()+' · '+traceStatus()+' · 平台：'+(Array.isArray(data.services)?data.services.join(', '):'未知')+
      (Array.isArray(data.recovery)&&data.recovery.length?' · 自动恢复：'+data.recovery.map(x=>x.service+'/'+x.result+(typeof x.points_delta==='number'?'/积分'+x.points_delta:'')).join(','):' · 自动恢复：无待处理'));
    }else if(code===401)note('鉴权失败','HTTP 401；比亚迪：'+bydStatus()+' · '+traceStatus());
    else note('检查失败','HTTP '+code+'；比亚迪：'+bydStatus()+' · '+traceStatus());

@@ -203,111 +203,58 @@ async function run(which,{fragment='',prefs={},answer={statusCode:200,body:'{"dr
   assert.equal(bydrules.filter(x=>x.includes('script-response-body')).length,1);
   assert(!bydrules.some(x=>x.includes('script-request-header')||x.includes('script-response-header')));
   console.log('PASS QX four-phase HTTP capture, exact-domain/TTL gating, unchanged bodies, safe notifications');
-  // Existing QL Arm must only enable 10m debug when the server has explicitly armed it.
-  const armScript=fs.readFileSync(__dirname+'/arm.js','utf8');
-  const LOCAL_LOGIN_B64=Buffer.from('SIMULATED_LOCAL_ENCRYPTED_LOGIN_NOT_REAL').toString('base64');
-  async function armWith(configResponse,activationResponse=null,saved=''){
-   const prefs={'qlcap_v1_token':TOKEN,'qlcap_v1_url':'https://qlcap.781751.xyz:58443',
-    'qlcap_v1_bydhy_enc':saved};
-   const notifications=[],calls=[];let finish;
-   const completion=new Promise(resolve=>finish=resolve);
-   vm.runInNewContext(armScript,{
-    $prefs:{valueForKey:k=>prefs[k]||'',setValueForKey:(v,k)=>(prefs[k]=v,true)},
-    $task:{fetch:async x=>{
-     calls.push(x);
-     assert.equal(x.headers.Authorization,'Bearer '+TOKEN);
-     if(x.url.endsWith('/trace/v1/config')){
-      assert.equal(x.method,'GET');
-      return configResponse;
-     }
-     if(x.url.endsWith('/trace/v1/activate')){
-      assert.equal(x.method,'POST');
-      assert(['mina.bydoceanauto.com','wx.10086.cn'].includes(JSON.parse(x.body).host));
-      if(!activationResponse)throw Error('Unexpected activation request');
-      return activationResponse;
-     }
-     if(x.url.endsWith('/trace/v1/ingest')){
-      assert.equal(x.method,'POST');
-      const record=JSON.parse(x.body);
-      assert.equal(record.origin,'qx-prefs-login');
-      assert.equal(record.stage,'response_body');
-      assert.equal(record.url,'https://mina.bydoceanauto.com/?service=mina.decryptCode');
-      assert.equal(record.body,LOCAL_LOGIN_B64);
-      return {statusCode:200,body:'{"accepted":true}'};
-     }
-     throw Error('Unexpected QX outbound request');
-    }},
-    $notify:(...args)=>notifications.push(args.join(' ')),
-    $done:()=>finish(),console:{log:()=>{}},
-   },{timeout:2000});
-   await Promise.race([completion,new Promise((_,rej)=>setTimeout(()=>rej(Error('arm not done')),1000))]);
-   return {prefs,notifications,calls};
+  // QL Arm is now a persistent manual override, without deep-trace authorization.
+  const arm=fs.readFileSync(__dirname+'/arm.js','utf8');
+  const disarm=fs.readFileSync(__dirname+'/disarm.js','utf8');
+  async function toggle(file,initial={}){
+    const data={...initial},notifications=[];let done=false;
+    vm.runInNewContext(file,{
+      $prefs:{valueForKey:k=>data[k]||'',setValueForKey:(v,k)=>(data[k]=v,true)},
+      $notify:(...args)=>notifications.push(args.join(' ')),
+      $done:()=>{done=true;},
+      console:{log:()=>{}}
+    },{timeout:1500});
+    assert(done);
+    return {data,notifications};
   }
-  let arm=await armWith({statusCode:200,body:'{"active":true,"host":"mina.bydoceanauto.com","remaining_seconds":480}'},null,LOCAL_LOGIN_B64);
-  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
-  assert(arm.notifications.join(' ').includes('加密登录信息已安全提交'));
-  assert.equal(arm.calls.length,2);
-  assert(arm.prefs.qlcap_v1_bydhy_transfer_at);
-  arm=await armWith({statusCode:200,body:'{"active":false,"prepared":false,"remaining_seconds":0}'});
-  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
-  assert.equal(arm.calls.length,1);
-  assert(!arm.notifications.join(' ').includes('深度诊断已开启'));
-  const prep=JSON.stringify({active:false,prepared:true,prepared_host:'mina.bydoceanauto.com',prepared_remaining_seconds:3600});
-  const activated=JSON.stringify({active:true,prepared:false,host:'mina.bydoceanauto.com',remaining_seconds:599});
-  arm=await armWith({statusCode:200,body:prep},{statusCode:200,body:activated},LOCAL_LOGIN_B64);
-  assert.equal(arm.calls.length,3);
-  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
-  assert(arm.notifications.join(' ').includes('加密登录信息已安全提交'));
-  arm=await armWith({statusCode:200,body:prep},{statusCode:200,body:activated});
-  assert.equal(arm.calls.length,2);
-  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
-  assert(arm.notifications.join(' ').includes('未找到本地比亚迪登录响应'));
-  arm=await armWith({statusCode:200,body:prep},{statusCode:409,body:'{"error":"not prepared"}'});
-  assert.equal(arm.calls.length,2);
-  assert.equal(arm.prefs.qlcap_v1_trace_until,'0');
-  assert(arm.notifications.join(' ').includes('HTTP 409'));
-  assert(!arm.notifications.join(' ').includes(TOKEN));
-  console.log('PASS QL Arm deferred one-time server activation, no unprepared/failed recording');
-  const mobilePrep=JSON.stringify({active:false,prepared:true,prepared_host:'wx.10086.cn',prepared_remaining_seconds:500});
-  const mobileActive=JSON.stringify({active:true,host:'wx.10086.cn',remaining_seconds:598});
-  arm=await armWith({statusCode:200,body:mobilePrep},{statusCode:200,body:mobileActive});
-  assert.equal(arm.calls.length,2);
-  assert.equal(arm.prefs.qlcap_v1_trace_host,'wx.10086.cn');
-  assert(Number(arm.prefs.qlcap_v1_trace_until)>Date.now());
-  assert(arm.notifications.join(' ').includes('中国移动 Cookie'));
+  let state=await toggle(disarm);
+  assert.equal(state.data.qlcap_v1_armed,'0');
+  state=await toggle(arm,state.data);
+  assert.equal(state.data.qlcap_v1_armed,'1');
+  assert.equal(state.data.qlcap_v1_quark_armed,'1');
+  assert(!state.notifications.join(' ').includes(TOKEN));
+  console.log('PASS default-on persistent QL Arm / Disarm without trace preparation');
+
   const mobileScript=fs.readFileSync(__dirname+'/china-mobile.js','utf8');
-  async function mobileHook(url,cookie,armed=true){
-   const prefs={
-    qlcap_v1_armed:'1',qlcap_v1_trace_until:armed?String(Date.now()+60000):'0',
-    qlcap_v1_trace_host:'wx.10086.cn',
-    qlcap_v1_url:'https://qlcap.781751.xyz:58443',qlcap_v1_token:TOKEN
-   };
-   const uploads=[];
-   let resolver;const done=new Promise(r=>resolver=r);
-   vm.runInNewContext(mobileScript,{
-    $request:{url,method:'POST',headers:{Cookie:cookie,'User-Agent':'private-device'}},
-    $prefs:{valueForKey:k=>prefs[k]||'',setValueForKey:(v,k)=>{prefs[k]=v;return true;}},
-    $task:{fetch:async e=>{uploads.push(JSON.parse(e.body));return {statusCode:200};}},
-    $done:()=>resolver(),console:{log:()=>{}}
-   },{timeout:1500});
-   await Promise.race([done,new Promise((_,reject)=>setTimeout(()=>reject(Error('QX mobile timeout')),1200))]);
-   return uploads;
+  async function mobileHook(url,cookie,paused=false){
+    const data=paused?{qlcap_v1_armed:'0'}:{};
+    const calls=[],notifications=[];let finished;
+    const completed=new Promise(resolve=>finished=resolve);
+    vm.runInNewContext(mobileScript,{
+      $request:{url,method:'POST',headers:{Cookie:cookie,'User-Agent':'secret-device'}},
+      $prefs:{valueForKey:k=>data[k]||'',setValueForKey:(v,k)=>(data[k]=v,true)},
+      $task:{fetch:async req=>{calls.push(req);return {statusCode:200};}},
+      $notify:(...args)=>notifications.push(args.join(' ')),
+      $done:()=>finished(),console:{log:()=>{}}
+    },{timeout:1500});
+    await Promise.race([completed,new Promise((_,rej)=>setTimeout(()=>rej(Error('mobile not done')),1100))]);
+    return {data,calls,notifications};
   }
-  const validCookie='QWHD_SESSION_TOKEN=SIMULATED_TOKEN_ABCDEF0123456; other=private_value';
-  const validUrl='https://wx.10086.cn/qwhdhub/api/mark/mark31/domark';
-  let mobileEvents=await mobileHook(validUrl,validCookie);
-  assert.equal(mobileEvents.length,1);
-  assert.equal(mobileEvents[0].headers.Cookie,'QWHD_SESSION_TOKEN=SIMULATED_TOKEN_ABCDEF0123456');
-  assert(!JSON.stringify(mobileEvents).includes('private_value'));
-  assert(!JSON.stringify(mobileEvents).includes('private-device'));
-  mobileEvents=await mobileHook('https://other.example/qwhdhub/api/mark/mark31/domark',validCookie);
-  assert.equal(mobileEvents.length,0);
-  mobileEvents=await mobileHook(validUrl,validCookie,false);
-  assert.equal(mobileEvents.length,0);
-  mobileEvents=await mobileHook(validUrl,'OtherCookie=foo');
-  assert.equal(mobileEvents.length,0);
-  console.log('PASS China Mobile QX exact-path, cookie-only and expiring trace gate');
+  const mobile='https://wx.10086.cn/qwhdhub/api/mark/do/mark';
+  let cm=await mobileHook(mobile,'QWHD_SESSION_TOKEN=SIMULATED_MOBILE_SECRET_ABCDEF; other=PRIVATE');
+  assert.equal(cm.data.qlcap_v1_chinaMobile_cookie,'SIMULATED_MOBILE_SECRET_ABCDEF');
+  assert.equal(cm.calls.length,0,'ordinary cookie capture must not require debug window');
+  assert(!cm.notifications.join(' ').includes('SIMULATED_MOBILE_SECRET_ABCDEF'));
+  cm=await mobileHook(mobile,'QWHD_SESSION_TOKEN=SIMULATED_MOBILE_SECRET_ABCDEF',true);
+  assert.equal(cm.data.qlcap_v1_chinaMobile_cookie,undefined);
+  cm=await mobileHook('https://evil.example/qwhdhub/api/mark/do/mark','QWHD_SESSION_TOKEN=SIMULATED_MOBILE_SECRET_ABCDEF');
+  assert.equal(cm.data.qlcap_v1_chinaMobile_cookie,undefined);
+  console.log('PASS CMCC default-on local Cookie capture, without unapproved outbound transfer');
 
-
-  console.log('PASS 8 simulated QX setup/status flows; all notifications avoid tokens');
+  // Run the dedicated Quark tests as part of CI, without showing credentials.
+  const {spawnSync}=require('node:child_process');
+  const quark=spawnSync(process.execPath,[__dirname+'/quark.test.cjs'],{encoding:'utf8'});
+  if(quark.status!==0)throw new Error('Quark QX tests failed: '+(quark.stderr||'').slice(0,1200));
+  console.log(quark.stdout.trim());
+  console.log('PASS previous QX setup/status/BYD/trace checks + default-on Quark integration');
 })().catch(e=>{console.error(e);process.exitCode=1;});
