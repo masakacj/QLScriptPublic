@@ -10,12 +10,24 @@
 | 夸克 | `drive-m.quark.cn` 成长/签到请求包含 `kps/sign/vcode` | 只读校验通过后更新已有单账号 `COOKIE_QUARK`，原任务 2255 保持不变 |
 | 比亚迪海洋 | 小程序登录响应/签到请求的加密字段 | 先保存 QX 本地候选，**不自动修改青龙** |
 | 中国移动 | `wx.10086.cn` 的签到/活动请求 Cookie | 仅保存 QX 本地候选；青龙签到由 YYB-Go 自动登录完成 |
+| 阿里云盘（诊断） | `auth.aliyundrive.com`、`auth.alipan.com` 的 `/v2/account/token` 登录/刷新响应 | **仅允许本机 QX HTTPS 流量观察**；未配置自动 Cookie/Token 上传或青龙写入 |
+| 快手极速版（诊断） | `nebula.kuaishou.com` 的 `/rest/n/nebula/activity/earn/overview`、`/rest/n/nebula/sign/query` 请求 | **仅允许本机 QX HTTPS 流量观察**；未配置自动 Cookie 上传或青龙写入 |
 
 - 只有实际经过 QX、命中 HTTPS 重写并成功 MitM 的请求才会被抓取。**QX 开着不代表其他 App 一定有产生对应请求**。
 - 夸克的 `kps/sign/vcode` 来自 **夸克移动端**，不是普通网页 Cookie；需要在已登录的夸克 App 打开网盘签到/成长任务页面。抓到有效凭据会验证并写入青龙（多账号时因账号映射不明确不会盲目覆盖）。
 - 夸克脚本若之前的定时日志显示“获取成长信息失败”，且新的凭据校验通过，网关会补跑一次任务 2255；否则保持每天 09:00 的原定时任务。
 - 永不把 Token、Cookie、私有 CA、手机号或请求原文写入 GitHub、普通日志或 QX 通知。
 - 网关仍保留最基本的 **HTTPS + Bearer + 域名/字段白名单**，减少控制步骤并不意味着向外开放管理接口。
+
+## QX 新增阿里云盘/快手极速版本机诊断（2026-10-30）
+
+当前仅将 `auth.aliyundrive.com`、`auth.alipan.com`、`nebula.kuaishou.com` 加入 QX 域名范围；**不会自动向服务器上传这两项登录凭据，亦不会更改已有青龙任务**。
+
+已使用自有 QX 配置者：在原 `[mitm] hostname` 列表**追加**这三个域名、保留原 CA/p12/passphrase，不要用公开模板覆盖完整配置；刷新原 Rewrite 远程资源即可。如果使用独立模板，修订版 `qx-cookie-only.conf` 已包含这些域名。
+
+保持 QX VPN、MitM、Rewrite 打开，在 QX 自带的 HTTP 记录里按域名检查：阿里云盘正常登录或刷新后是否出现 `/v2/account/token`（观察响应状态及 `refresh_token` 字段是否**存在**，不要把 Token 发进聊天）；快手极速版已登录打开“红包/赚金币”页面，观察 `nebula.kuaishou.com` 的 `/rest/n/nebula/activity/earn/overview` 或 `/rest/n/nebula/sign/query`（检查请求 Cookie 是否存在 `kuaishou.api_st`、`api_st`、`did` 等字段名，隐藏字段值）。
+
+如果相关 App 启用证书固定、HTTP/3 或其他加密保护，QX 可能无法解密甚至影响登录；此时应取消该域名的 MitM，恢复原 App 使用，改用本人授权的正常登录或 App 自带导出途径。不要关闭证书验证或上传原始 HAR 到公开位置。
 
 ## QX 已有用户如何升级
 
