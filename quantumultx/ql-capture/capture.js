@@ -212,13 +212,57 @@ function captureByd(url){
  }else note('比亚迪保存失败','未修改青龙');
  done();
 }
-/* Aliyun response is a pass-through body rewrite. Only safe status/field
- * presence metadata is retained in local QX preferences. No credentials.
+/* Send ONLY Boolean/status data. The authorized server rejects unexpected
+ * keys and never accepts a request URL, Cookie, token, or response body.
+ * This is separate from the explicit manually armed raw debug capture.
+ */
+function sendQXHit(service,stage,method,httpStatus,fieldPresent){
+ const server=String(get('url')||'').replace(/\/+$/,'');
+ const token=String(get('token')||'');
+ if(server!=='https://qlcap.781751.xyz:58443'||token.length<32){
+  put(service+'_inspect_upload','网关未配置');
+  return done();
+ }
+ const event={
+  v:1,type:'qx_event_metric_v1',service:service,stage:stage,
+  method:method,http_status:httpStatus,auth_field_present:Boolean(fieldPresent)
+ };
+ let finished=false;
+ const finish=()=>{
+  if(finished)return;finished=true;done();
+ };
+ const timeout=setTimeout(()=>{
+  put(service+'_inspect_upload','上传超时');
+  finish();
+ },2400);
+ try{
+  $task.fetch({
+   url:server+'/trace/v1/ingest',method:'POST',
+   headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+   body:JSON.stringify(event),opts:{policy:'direct'}
+  }).then(r=>{
+   if(finished)return;clearTimeout(timeout);
+   const code=Number(r.statusCode||r.status||0);
+   put(service+'_inspect_upload',code===200?'安全状态已上传':'HTTP '+code);
+   if(code===200)put(service+'_inspect_uploaded_at',new Date().toISOString());
+   finish();
+  }).catch(()=>{
+   if(finished)return;clearTimeout(timeout);
+   put(service+'_inspect_upload','网关不可达');
+   finish();
+  });
+ }catch(_){
+  clearTimeout(timeout);
+  put(service+'_inspect_upload','提交异常');
+  finish();
+ }
+}
+/* Aliyun response is pass-through; only safe status and credential-field
+ * presence are stored locally and transmitted as Boolean metadata.
  */
 function inspectAliyun(url){
  if(get('armed')==='0'||get('aliyun_inspect_armed')==='0')return done();
- const match=/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\/token(?:\?|$)/i;
- if(!match.test(url))return done();
+ if(!/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\/token(?:\?|$)/i.test(url))return done();
  const req=typeof $request==='undefined'?{}:$request;
  const res=typeof $response==='undefined'?{}:$response;
  if(req.method&&String(req.method).toUpperCase()!=='POST')return done();
@@ -241,16 +285,12 @@ function inspectAliyun(url){
   put('aliyun_inspect_notified',String(Date.now()));
   note('阿里云盘接口已命中','HTTP '+(code||'?')+' · '+(hasRefresh?'发现刷新字段':'无刷新字段')+'；未保存凭据内容');
  }
- done();
+ return sendQXHit('aliyun','response','POST',Number.isInteger(code)?code:0,hasRefresh);
 }
-
-/* Kuaishou Lite: only report that the authenticated Nebula request
- * was observed. Do not retain any Cookie content or request query.
- */
+/* Kuaishou Lite request endpoint and Cookie header presence only. */
 function inspectKuaishou(url){
  if(get('armed')==='0'||get('kslite_inspect_armed')==='0')return done();
- const match=/^https:\/\/nebula\.kuaishou\.com\/rest\/n\/nebula\/(?:activity\/earn\/overview|sign\/query)(?:\?|$)/i;
- if(!match.test(url))return done();
+ if(!/^https:\/\/nebula\.kuaishou\.com\/rest\/n\/nebula\/(?:activity\/earn\/overview|sign\/query)(?:\?|$)/i.test(url))return done();
  const req=typeof $request==='undefined'?{}:$request;
  const method=String(req.method||'GET').toUpperCase();
  if(method!=='GET'&&method!=='POST')return done();
@@ -263,7 +303,7 @@ function inspectKuaishou(url){
   put('kslite_inspect_notified',String(Date.now()));
   note('快手极速版接口已命中',present?'检测到 Cookie 请求头；未保存凭据内容':'未检测到 Cookie 请求头');
  }
- done();
+ return sendQXHit('kuaishou','request',method,null,present);
 }
 
 function main(){
