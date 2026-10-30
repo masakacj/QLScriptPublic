@@ -47,7 +47,7 @@ try{
    if(code===200&&typeof data.dry_run==='boolean'){
     note('网关可用 · '+(Date.now()-began)+'ms',
      '模式：'+(data.dry_run?'DRY_RUN':'正式写入')+' · 采集：'+(read('armed')==='0'?'暂停':'默认开启')+
-     ' · 夸克：'+(read('quark_last_result')||'尚未抓取')+(read('quark_seen_at')?'（'+age('quark_seen_at')+'）':'')+' · 比亚迪：'+bydStatus()+' · '+traceStatus()+' · 平台：'+(Array.isArray(data.services)?data.services.join(', '):'未知')+
+     ' · 夸克：'+(read('quark_last_result')||'尚未抓取')+(read('quark_seen_at')?'（'+age('quark_seen_at')+'）':'')+' · 请求结构：'+(read('shape_last_result')||'尚无记录')+'（'+age('shape_last_at')+'）'+' · 比亚迪：'+bydStatus()+' · '+traceStatus()+' · 平台：'+(Array.isArray(data.services)?data.services.join(', '):'未知')+
      (Array.isArray(data.recovery)&&data.recovery.length?' · 自动恢复：'+data.recovery.map(x=>x.service+'/'+x.result+(typeof x.points_delta==='number'?'/积分'+x.points_delta:'')).join(','):' · 自动恢复：无待处理'));
    }else if(code===401)note('鉴权失败','HTTP 401；比亚迪：'+bydStatus()+' · '+traceStatus());
    else note('检查失败','HTTP '+code+'；比亚迪：'+bydStatus()+' · '+traceStatus());
