@@ -1,6 +1,9 @@
-/* QX: explicit SF request/response header capture. Do not log headers or secrets. */
+/* QX scoped capture: preserve SF, BYD and bounded debug behavior.
+ * Aliyun and Kuaishou Lite hooks are local diagnostic metadata only.
+ * No new secret values are forwarded or included in notifications.
+ */
 'use strict';
-const V='1.5.2',P='qlcap_v1_';
+const V='1.5.3',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -11,6 +14,12 @@ function done(){
  // In body rewrites QX expects an unchanged original body to be returned.
  // Never remove or mutate the real sign-in/login payload.
  const url=(typeof $request!=='undefined'&&$request&&$request.url)||'';
+ if(/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\/token(?:\?|$)/i.test(url)){
+  const response=typeof $response==='undefined'?null:$response;
+  if(response&&typeof response.body==='string')return $done({body:response.body});
+  if(response&&response.bodyBytes)return $done({bodyBytes:response.bodyBytes});
+  return $done({});
+ }
  if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(url)){
   // A response-header hook must not send body fields as rewrite output.
   if(typeof $response!=='undefined'&&$response&&$response.headers&&typeof $response.body!=='string')return $done({});
@@ -203,8 +212,64 @@ function captureByd(url){
  }else note('比亚迪保存失败','未修改青龙');
  done();
 }
+/* Aliyun response is a pass-through body rewrite. Only safe status/field
+ * presence metadata is retained in local QX preferences. No credentials.
+ */
+function inspectAliyun(url){
+ if(get('armed')==='0'||get('aliyun_inspect_armed')==='0')return done();
+ const match=/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\/token(?:\?|$)/i;
+ if(!match.test(url))return done();
+ const req=typeof $request==='undefined'?{}:$request;
+ const res=typeof $response==='undefined'?{}:$response;
+ if(req.method&&String(req.method).toUpperCase()!=='POST')return done();
+ put('aliyun_inspect_at',new Date().toISOString());
+ const code=Number(res.statusCode||res.status||0);
+ if(Number.isInteger(code)&&code>=100&&code<=599)put('aliyun_inspect_http',code);
+ let data={};
+ if(typeof res.body==='string'&&res.body.length<150000){
+  try{data=JSON.parse(res.body);}catch(_){}
+ }
+ if(!data||typeof data!=='object'||Array.isArray(data))data={};
+ const nested=data.data&&typeof data.data==='object'&&!Array.isArray(data.data)?data.data:{};
+ const fields=Array.from(new Set(Object.keys(data).concat(Object.keys(nested))))
+   .filter(k=>/^[A-Za-z_][A-Za-z0-9_.-]{0,59}$/.test(k)).slice(0,40);
+ const hasRefresh=fields.includes('refresh_token');
+ put('aliyun_inspect_has_refresh',hasRefresh?'1':'0');
+ put('aliyun_inspect_result',hasRefresh?'认证响应含刷新字段':'已命中，未见刷新字段');
+ const last=Number(get('aliyun_inspect_notified'))||0;
+ if(Date.now()-last>600000){
+  put('aliyun_inspect_notified',String(Date.now()));
+  note('阿里云盘接口已命中','HTTP '+(code||'?')+' · '+(hasRefresh?'发现刷新字段':'无刷新字段')+'；未保存凭据内容');
+ }
+ done();
+}
+
+/* Kuaishou Lite: only report that the authenticated Nebula request
+ * was observed. Do not retain any Cookie content or request query.
+ */
+function inspectKuaishou(url){
+ if(get('armed')==='0'||get('kslite_inspect_armed')==='0')return done();
+ const match=/^https:\/\/nebula\.kuaishou\.com\/rest\/n\/nebula\/(?:activity\/earn\/overview|sign\/query)(?:\?|$)/i;
+ if(!match.test(url))return done();
+ const req=typeof $request==='undefined'?{}:$request;
+ const method=String(req.method||'GET').toUpperCase();
+ if(method!=='GET'&&method!=='POST')return done();
+ const present=Boolean(header(req.headers||{},'cookie'));
+ put('kslite_inspect_at',new Date().toISOString());
+ put('kslite_inspect_has_cookie_header',present?'1':'0');
+ put('kslite_inspect_result',present?'Nebula 命中，有 Cookie 请求头':'Nebula 命中，无 Cookie 请求头');
+ const last=Number(get('kslite_inspect_notified'))||0;
+ if(Date.now()-last>600000){
+  put('kslite_inspect_notified',String(Date.now()));
+  note('快手极速版接口已命中',present?'检测到 Cookie 请求头；未保存凭据内容':'未检测到 Cookie 请求头');
+ }
+ done();
+}
+
 function main(){
  const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
+ if(/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\/token(?:\?|$)/i.test(source))return inspectAliyun(source);
+ if(/^https:\/\/nebula\.kuaishou\.com\/rest\/n\/nebula\/\S*/i.test(source))return inspectKuaishou(source);
  if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(source)){
   const stage=tracePhase();
   return stage?handleBydTrace(source,stage):captureByd(source);
