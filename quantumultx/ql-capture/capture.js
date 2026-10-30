@@ -3,7 +3,7 @@
  * No new secret values are forwarded or included in notifications.
  */
 'use strict';
-const V='1.5.4',P='qlcap_v1_';
+const V='1.5.7',P='qlcap_v1_';
 const sf={host:'mcs-mimp-web.sf-express.com',paths:['/mcs-mimp/','/home','/superWelfare'],
  names:['sessionId','_login_mobile_','_login_user_id_']};
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Capture v'+V+'] '+x);}
@@ -306,10 +306,96 @@ function inspectKuaishou(url){
  return sendQXHit('kuaishou','request',method,null,present);
 }
 
+/* Per-domain HTTP structure recording. Each body rewrite reports headers
+ * and JSON field names as two separate stages. Never forward original values.
+ */
+function shapePhase(){
+ const s=(typeof $environment!=='undefined'&&$environment&&$environment.sourcePath)||'';
+ const m=/#shape=(reqb|rsb)(?:&|$)/.exec(s);
+ return m?m[1]:'';
+}
+function fieldKeys(value){
+ if(!value||typeof value!=='object')return [];
+ return Object.keys(value).filter(k=>/^[A-Za-z_][A-Za-z0-9_.-]{0,55}$/.test(k)).slice(0,40);
+}
+function jsonKeys(body){
+ if(typeof body!=='string'||body.length>200000)return [];
+ let obj;try{obj=JSON.parse(body);}catch(e){return [];}
+ const keys=fieldKeys(obj);
+ if(obj&&obj.data&&typeof obj.data==='object'){
+  for(const key of fieldKeys(obj.data)){if(keys.indexOf(key)<0&&keys.length<40)keys.push(key);}
+ }
+ return keys;
+}
+function sortedFields(names){
+ return names.filter(k=>/^[A-Za-z_][A-Za-z0-9_.-]{0,55}$/.test(k)).slice(0,40);
+}
+function recordHTTPShape(source,stage){
+ if(get('armed')==='0'||get('shape_armed')==='0')return finishPhase(stage);
+ const match=/^https:\/\/([^/?#]+)(\/[^?#]*)(?:\?([^#]*))?/i.exec(source);
+ if(!match)return finishPhase(stage);
+ const host=match[1].toLowerCase(),path=match[2];
+ if(!((host==='auth.aliyundrive.com'||host==='auth.alipan.com')&&path.indexOf('/v2/account/')===0) &&
+    !(host==='nebula.kuaishou.com'&&path.indexOf('/rest/n/nebula/')===0))return finishPhase(stage);
+ if(!/^[\/a-zA-Z0-9_.-]+$/.test(path)||path.length>180)return finishPhase(stage);
+ const req=typeof $request==='undefined'?{}:$request;
+ const res=typeof $response==='undefined'?{}:$response;
+ const method=String(req.method||'GET').toUpperCase();
+ if(method!=='GET'&&method!=='POST')return finishPhase(stage);
+ const server=String(get('url')||'').replace(/\/+$/,''),token=String(get('token')||'');
+ if(server!=='https://qlcap.781751.xyz:58443'||token.length<32)return finishPhase(stage);
+ const query=match[3]||'',names=[];
+ for(const pair of query.split('&')){
+  const key=pair.split('=')[0];
+  if(key){try{names.push(decodeURIComponent(key));}catch(e){}}
+ }
+ const queryKeys=sortedFields(Array.from(new Set(names)));
+ const h=stage==='reqb'?req.headers:res.headers;
+ const headers=sortedFields(Object.keys(h||{}));
+ const body=stage==='reqb'?req.body:res.body;
+ const length=typeof body==='string'?Math.min(body.length,200000):null;
+ const keys=jsonKeys(body);
+ const status=stage==='rsb'?Number(res.statusCode||res.status||0):null;
+ const base={v:1,type:'qx_structure_v1',host,path,method,query_keys:queryKeys};
+ const items=stage==='reqb'?[
+  {...base,stage:'request_headers',header_keys:headers,body_keys:[],body_length:null,status:null},
+  {...base,stage:'request_body',header_keys:[],body_keys:keys,body_length:length,status:null}
+ ]:[
+  {...base,stage:'response_headers',header_keys:headers,body_keys:[],body_length:null,status:Number.isFinite(status)?status:0},
+  {...base,stage:'response_body',header_keys:[],body_keys:keys,body_length:length,status:Number.isFinite(status)?status:0}
+ ];
+ put(host==='nebula.kuaishou.com'?'kslite_inspect_at':'aliyun_inspect_at',new Date().toISOString());
+ let finished=false;
+ const exit=()=>{if(finished)return;finished=true;finishPhase(stage);};
+ const watchdog=setTimeout(()=>{put('shape_last_result','timeout');exit();},2700);
+ try{
+  const sends=items.map(payload=>$task.fetch({
+   url:server+'/trace/v1/ingest',method:'POST',
+   headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+   body:JSON.stringify(payload),opts:{policy:'direct'}
+  }).then(reply=>Number(reply.statusCode||reply.status||0)===200).catch(()=>false));
+  Promise.all(sends).then(values=>{
+   if(finished)return;
+   clearTimeout(watchdog);
+   const ok=values.filter(Boolean).length;
+   put('shape_last_result',ok===2?'四阶段记录已接收':'部分阶段未接收');
+   put('shape_last_at',new Date().toISOString());
+   exit();
+  }).catch(()=>{clearTimeout(watchdog);exit();});
+ }catch(e){clearTimeout(watchdog);exit();}
+}
+
 function main(){
  const source=(typeof $request!=='undefined'&&$request&&$request.url)||'';
- if(/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\/token(?:\?|$)/i.test(source))return inspectAliyun(source);
- if(/^https:\/\/nebula\.kuaishou\.com\/rest\/n\/nebula\/\S*/i.test(source))return inspectKuaishou(source);
+ const phase=shapePhase();
+ if(/^https:\/\/(?:auth\.aliyundrive\.com|auth\.alipan\.com)\/v2\/account\//i.test(source)){
+  if(phase)return recordHTTPShape(source,phase);
+  return inspectAliyun(source);
+ }
+ if(/^https:\/\/nebula\.kuaishou\.com\/rest\/n\/nebula\//i.test(source)){
+  if(phase)return recordHTTPShape(source,phase);
+  return inspectKuaishou(source);
+ }
  if(/^https:\/\/mina\.bydoceanauto\.com\//i.test(source)){
   const stage=tracePhase();
   return stage?handleBydTrace(source,stage):captureByd(source);
