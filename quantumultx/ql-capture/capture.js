@@ -1,5 +1,5 @@
 /* QX scoped capture: preserve SF, BYD and bounded debug behavior.
- * Aliyun and Kuaishou Lite hooks are local diagnostic metadata only.
+ * Aliyun and Kuaishou Lite report four-stage request/response structures.
  * No new secret values are forwarded or included in notifications.
  */
 'use strict';
