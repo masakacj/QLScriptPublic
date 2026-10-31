@@ -382,6 +382,11 @@ function recordHTTPShape(source,stage){
  const status=stage==='rsb'?Number(res.statusCode||res.status||0):null;
  const appIds=(host==='auth.aliyundrive.com'||host==='auth.alipan.com')?
    publicAliAppIds(req):{};
+ if(stage==='reqb'&&appIds.wx_appid){
+  put('aliyun_wx_appid',appIds.wx_appid);
+  if(appIds.wx_appid_source)put('aliyun_wx_appid_source',appIds.wx_appid_source);
+ }
+ if(stage==='reqb'&&appIds.client_app_id)put('aliyun_client_app_id',appIds.client_app_id);
  const base={v:1,type:'qx_structure_v1',host,path,method,query_keys:queryKeys,...appIds};
  const items=stage==='reqb'?[
   {...base,stage:'request_headers',header_keys:headers,body_keys:[],body_length:null,status:null},
