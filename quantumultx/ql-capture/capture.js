@@ -330,6 +330,30 @@ function jsonKeys(body){
 function sortedFields(names){
  return names.filter(k=>/^[A-Za-z_][A-Za-z0-9_.-]{0,55}$/.test(k)).slice(0,40);
 }
+/* Extract only two public app identifiers, not raw Referer/UA or auth data.
+ * WeChat mini-program ID is accepted only in a precise wx + 16-hex format.
+ */
+function publicAliAppIds(req){
+ const hs=req.headers||{};
+ const referer=header(hs,'referer');
+ const userAgent=header(hs,'user-agent');
+ let wx=null,wxSource=null,client=null;
+ const refMatch=/^https:\/\/servicewechat\.com\/(wx[0-9a-f]{16})(?:\/|$)/i.exec(referer);
+ const uaMatch=/(?:miniProgram\/|appbrand\/)(wx[0-9a-f]{16})(?![0-9a-f])/i.exec(userAgent);
+ if(refMatch){wx=refMatch[1].toLowerCase();wxSource='referer';}
+ else if(uaMatch){wx=uaMatch[1].toLowerCase();wxSource='user_agent';}
+ if(typeof req.body==='string'&&req.body.length<=5000){
+  let parsed;try{parsed=JSON.parse(req.body);}catch(_){}
+  const val=parsed&&parsed.app_id;
+  if(typeof val==='string'&&/^[A-Za-z0-9_.-]{2,48}$/.test(val)){
+   client=val;
+   if(!wx&&/^wx[0-9a-f]{16}$/i.test(val)){
+    wx=val.toLowerCase();wxSource='request_app_id';
+   }
+  }
+ }
+ return {wx_appid:wx,wx_appid_source:wxSource,client_app_id:client};
+}
 function recordHTTPShape(source,stage){
  if(get('armed')==='0'||get('shape_armed')==='0')return finishPhase(stage);
  const match=/^https:\/\/([^/?#]+)(\/[^?#]*)(?:\?([^#]*))?/i.exec(source);
@@ -356,7 +380,9 @@ function recordHTTPShape(source,stage){
  const length=typeof body==='string'?Math.min(body.length,200000):null;
  const keys=jsonKeys(body);
  const status=stage==='rsb'?Number(res.statusCode||res.status||0):null;
- const base={v:1,type:'qx_structure_v1',host,path,method,query_keys:queryKeys};
+ const appIds=(host==='auth.aliyundrive.com'||host==='auth.alipan.com')?
+   publicAliAppIds(req):{};
+ const base={v:1,type:'qx_structure_v1',host,path,method,query_keys:queryKeys,...appIds};
  const items=stage==='reqb'?[
   {...base,stage:'request_headers',header_keys:headers,body_keys:[],body_length:null,status:null},
   {...base,stage:'request_body',header_keys:[],body_keys:keys,body_length:length,status:null}
