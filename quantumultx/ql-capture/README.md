@@ -42,6 +42,23 @@
 
 请在 QX **本机**初始化网关 CAPTURE_TOKEN，切勿将其粘贴进公开 URL/仓库。已有配置不用重复 Setup。
 
+## QX HTTP Backend 内网只读状态接口（2026-10-31）
+
+若手机 `192.168.233.139` 的 QX HTTP Backend 已监听 `0.0.0.0:9999`，但访问 `/` 返回 404，这是预期表现：**须配置 `[http_backend]` 匹配路径的 JS**。HTTP Backend 并不提供访问 QX 原生 HTTP Analyzer 历史流量的通用 API。
+
+在**当前 QX 主配置文件**中现有 `[http_backend]` 章节下追加（没有该章节才新建）：
+
+```conf
+[http_backend]
+https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/http-backend-status.js, tag=QL Capture Status, path=^/qlcap/status/v1/, enabled=true
+```
+
+如主配置已有 `[http_backend]`，不要重复添加章节头；只增加规则行。完整模板 `qx-cookie-only.conf` 已包含此条目，但更新已有 Rewrite 远程资源**不会**自动修改手机上的主配置章节。
+
+配置生效后访问 `http://192.168.233.139:9999/qlcap/status/v1/`。只返回 QX 本地采集开启状态、最近命中时间、上传状态、合法格式的公开 `wx_appid` 和阿里云盘客户端 `app_id`；**不返回 Token、Cookie、私有 CA、原始请求/响应**。对手机所在内网可以读取这些状态信息，因此请勿做端口映射或将 HTTP Backend 9999 暴露到公网。
+
+若没有微信 AppID，优先观察阿里云盘小程序的 `Referer`，其次 `User-Agent`，最后区分请求体中的客户端 `app_id`。脚本会在命中认证请求时把严格校验的公开 AppID 同步到 QX 本机 `$prefs`，使后台可直接查询；之前未保存的请求无法恢复这些字段值。
+
 ## QX 操作逻辑
 
 - **QL Status**：只读检查网关与最近抓取结果（不展示具体凭据）。
