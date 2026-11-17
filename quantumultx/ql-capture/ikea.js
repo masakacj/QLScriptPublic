@@ -1,11 +1,12 @@
 /* IKEA Mini Program API discovery for Quantumult X.
  * Request/response HEADER hooks only. No Cookie, Authorization, query values,
  * request body, response body, shopping data, or private identifiers uploaded.
- * Stops after a single 30-minute capture window (from the first IKEA request).
+ * General discovery stops after 30 minutes; login/auth URL metadata remains
+ * observable without raw headers, bodies, query values, or credentials.
  * Existing QL credential gateway and BYD/SF/Quark hooks are untouched.
  */
 'use strict';
-const VERSION='1.0.0', PREFIX='qlcap_v1_';
+const VERSION='1.1.0', PREFIX='qlcap_v1_';
 const SERVER='https://qlcap.781751.xyz:58443';
 const HALF_HOUR_MS=30*60*1000;
 function pref(name){return $prefs.valueForKey(PREFIX+name)||'';}
@@ -61,18 +62,24 @@ function main(){
   const target=parse(req.url);
   if(!target)return finish();
   const now=Date.now();
+  // Login and auth metadata remain observable even when the general
+  // 30-minute discovery expires. No header/body/query values are uploaded.
+  const loginMeta=/(?:^|\/)(?:login|logout|auth|oauth|token|session|wechat|ciam)(?:\/|$|[-_])/i.test(target.path);
   let started=Number(pref('ikea_capture_started_ms'))||0;
   if(!started){
     started=now;save('ikea_capture_started_ms',now);
   }
-  if(now-started>HALF_HOUR_MS)return finish();
+  if(!loginMeta&&now-started>HALF_HOUR_MS)return finish();
   const stage=res?'response_headers':'request_headers';
   const method=String(req.method||'GET').toUpperCase();
   if(method!=='GET'&&method!=='POST')return finish();
   const rawStatus=res&&res.statusCode!==undefined?Number(res.statusCode):null;
   const status=rawStatus!==null&&Number.isFinite(rawStatus)&&rawStatus>=0&&rawStatus<=599?rawStatus:null;
-  const fp=hash([target.host,target.path,stage,method,status].join('|'));
-  const seen=pref('ikea_sent_fingerprints').split(',').filter(Boolean);
+  const key=loginMeta?'ikea_login_meta_fingerprints':'ikea_sent_fingerprints';
+  // For login paths capture once per 10-minute window. Do not collect values.
+  const bucket=loginMeta?Math.floor(now/600000):0;
+  const fp=hash([target.host,target.path,stage,method,status,bucket].join('|'));
+  const seen=pref(key).split(',').filter(Boolean);
   if(seen.includes(fp))return finish();
   const wx=wxAppId(req.headers);
   const payload={
@@ -88,12 +95,19 @@ function main(){
   function end(ok){
     if(done)return;done=true;
     if(ok){
-      save('ikea_sent_fingerprints',seen.concat(fp).slice(-80).join(','));
+      save(key,seen.concat(fp).slice(-80).join(','));
       save('ikea_last_event_at',new Date().toISOString());
-      if(pref('ikea_first_success')!=='1'){
+      if(loginMeta){
+        save('ikea_login_meta_at',new Date().toISOString());
+        if(pref('ikea_login_meta_first_success')!=='1'){
+          save('ikea_login_meta_first_success','1');
+          if(typeof $notify==='function')
+            $notify('宜家登录诊断','已记录登录接口结构','仅脱敏路径、请求方法和字段名，不含 Token。');
+        }
+      }else if(pref('ikea_first_success')!=='1'){
         save('ikea_first_success','1');
         if(typeof $notify==='function')
-          $notify('宜家小程序采集','已收到请求结构','仅包含域名、脱敏路径、请求方法和字段名；30 分钟后自动停止。');
+          $notify('宜家小程序采集','已收到请求结构','仅域名、脱敏路径、方法和字段名；普通采集 30 分钟后停止。');
       }
     }
     finish();
