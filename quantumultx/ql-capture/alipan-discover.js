@@ -10,7 +10,11 @@ function get(k){return $prefs.valueForKey(PREF+k)||'';}
 function put(k,v){return $prefs.setValueForKey(String(v),PREF+k);}
 function done(){$done({});}
 function hostAllowed(host){
-  return /^(?:[a-z0-9-]+\.)*(?:alipan|aliyundrive)\.com$/.test(host);
+  // Observed in Stream from the user's Aliyun Drive miniapp.
+  // Storage CDN and aliapp.org are exact hosts, not broad domain wildcards.
+  return /^(?:[a-z0-9-]+\.)*(?:alipan|aliyundrive)\.com$/.test(host) ||
+    host==='cn-beijing-data.aliyundrive.net' ||
+    host==='ynuf.aliapp.org';
 }
 function parsed(raw){
   const m=/^https:\/\/([a-z0-9.-]+)(\/[^?#]*)?(?:\?([^#]*))?/i.exec(String(raw||''));
