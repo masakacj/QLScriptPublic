@@ -1,6 +1,6 @@
 /* QX manual status diagnostic - no credentials or cookie values in logs. */
 'use strict';
-const VERSION='2.2.0', P='qlcap_v1_';
+const VERSION='2.3.0', P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Status v'+VERSION+'] '+x);}
 function note(title,msg){log(title+' / '+msg);if(typeof $notify==='function')$notify('青龙采集 v'+VERSION,title,msg);}
 function read(k){return $prefs.valueForKey(P+k)||'';}
@@ -30,9 +30,10 @@ function alipanStatus(){
   'api.aliyundrive.com','member.aliyundrive.com',
   'cn-beijing-data.aliyundrive.net','ynuf.aliapp.org'];
  const shown=allowed.includes(host)?host:'其他受控域名';
+ const authProbe=read('alipan_auth_probe_last_result')||'未触发';
  return '命中 '+shown+'（'+age('alipan_probe_hit_at')+'）'+
    ' · 上传 '+(up?age('alipan_probe_last_at'):'未成功')+
-   ' · '+result;
+   ' · '+result+' · 凭据兼容验证：'+authProbe;
 }
 function bydStatus(){
  const hit=Boolean(read('bydhy_seen_at'));
