@@ -5,7 +5,7 @@
  */
 'use strict';
 const PREF='qlcap_v1_',GATEWAY='https://qlcap.781751.xyz:58443';
-const WINDOW_MS=45*60*1000, BUILD='20261118-104';
+const WINDOW_MS=90*60*1000, BUILD='20261118-205';
 function get(k){return $prefs.valueForKey(PREF+k)||'';}
 function put(k,v){return $prefs.setValueForKey(String(v),PREF+k);}
 function done(){$done({});}
