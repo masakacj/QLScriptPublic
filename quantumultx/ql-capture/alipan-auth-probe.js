@@ -6,7 +6,7 @@
 const HOST='https://qlcap.781751.xyz:58443';
 const ROUTE='https://user.aliyundrive.com/v2/user/get';
 const APPID='wxf86f0a56fa23241f';
-const PREFIX='qlcap_v1_';
+const PREFIX='qlcap_v1_', BUILD='20261118-signonce-01';
 function get(k){return $prefs.valueForKey(PREFIX+k)||'';}
 function set(k,v){return $prefs.setValueForKey(String(v),PREFIX+k);}
 function done(){if(typeof $done==='function')$done({});}
@@ -35,7 +35,7 @@ function main(){
   set('alipan_auth_probe_last_result','bearer_unrecognized');
   return done();
  }
- const fingerprint=hash(auth);
+ const fingerprint=BUILD+':'+hash(auth);
  if(get('alipan_auth_probe_last_hash')===fingerprint)return done();
  const server=get('url').replace(/\/+$/,''),gatewayKey=get('token');
  if(server!==HOST||gatewayKey.length<32){
