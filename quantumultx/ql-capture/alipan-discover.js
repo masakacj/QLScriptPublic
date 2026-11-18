@@ -5,7 +5,7 @@
  */
 'use strict';
 const PREF='qlcap_v1_',GATEWAY='https://qlcap.781751.xyz:58443';
-const WINDOW_MS=45*60*1000;
+const WINDOW_MS=45*60*1000, BUILD='20261118-104';
 function get(k){return $prefs.valueForKey(PREF+k)||'';}
 function put(k,v){return $prefs.setValueForKey(String(v),PREF+k);}
 function done(){$done({});}
@@ -64,9 +64,11 @@ function main(){
  if(!url)return done();
  const now=Date.now();
  put('alipan_probe_hit_at',new Date(now).toISOString());
+ put('alipan_probe_last_host',url.host);
  const day=new Date(now).toISOString().slice(0,10);
  let start=Number(get('alipan_probe_started_ms'))||0;
- if(get('alipan_probe_day')!==day){
+ if(get('alipan_probe_day')!==day || get('alipan_probe_build')!==BUILD){
+   put('alipan_probe_build',BUILD);
    put('alipan_probe_day',day);
    start=now;
    put('alipan_probe_started_ms',start);
