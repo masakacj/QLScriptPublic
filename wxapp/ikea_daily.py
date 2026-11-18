@@ -33,6 +33,13 @@ def log(event,**data):
 
 def notify_fail(reason):
     try:
+        # QingLong runs task scripts from nested repository directories; its
+        # own notification module lives at the scripts root, not sys.path.
+        from pathlib import Path
+        import sys
+        ql_scripts="/ql/data/scripts"
+        if Path(ql_scripts,"sendNotify.py").is_file() and ql_scripts not in sys.path:
+            sys.path.insert(0,ql_scripts)
         from sendNotify import send
         send("宜家签到失败", "IKEA 宜家家居 · "+str(reason)+"；未确认签到成功，请检查 YYB/青龙运行日志。")
         log("notified",status="sent")
@@ -94,8 +101,10 @@ def ensure_code_zero(answer,label):
 def get_party_uid(token):
     ans=request_json("GET",CIAM,"/ciam/crbff/profile/auth/customer/profile/get",token)
     data=ensure_code_zero(ans,"会员资料")
-    if not isinstance(data,dict):raise SigninError("会员资料结构异常")
-    customer=data.get("customer") or data.get("data",{}).get("customer",{})
+    # CIAM profile/get returns {code:"P20000", customer:{...}} at top level,
+    # unlike customer-bff endpoints that put results under data.
+    if not isinstance(data,dict):data=ans
+    customer=data.get("customer")
     key=customer.get("partyUid") if isinstance(customer,dict) else None
     if not isinstance(key,str) or not 3<=len(key)<=160:
         raise SigninError("会员资料未返回 partyUid")
