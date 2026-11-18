@@ -59,6 +59,12 @@ function Env(t, s) {
             return String(v);
         }
         async sendMsg() {
+            // In summary-only mode, the unified digest and failure watcher own notifications.
+            // Do not import the legacy sendNotify module (or its optional undici dependency).
+            if (this.isNode() &&
+                (process.env.QL_SUMMARY_ONLY === "1" ||
+                 this.fs.existsSync("/ql/data/config/ql-summary-only.enabled")) &&
+                process.env.QL_SUMMARY_SENDING !== "1") return;
             this.log("==============📣Center 通知📣==============")
             let message = this.notifyStr.join(this.logSeparator);
             if (this.isNode()) {
@@ -66,7 +72,7 @@ function Env(t, s) {
                     const { sendNotify } = require("./sendNotify.js")
                     await sendNotify(this.name, message);
                 } catch (e) {
-                    console.error(e.code === "MODULE_NOT_FOUND" ? "发送通知失败: 未找到 sendNotify.js 模块" : `发送通知失败: sendNotify.js 内部错误 (${e.message})`);
+                    console.error(e.code === "MODULE_NOT_FOUND" ? "发送通知失败: sendNotify.js 或其依赖缺失（检查 undici）" : `发送通知失败: sendNotify.js 内部错误 (${e.message})`);
                 }
 
             }
