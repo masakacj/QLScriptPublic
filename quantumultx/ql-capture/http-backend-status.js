@@ -7,7 +7,7 @@
  * https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/http-backend-status.js, tag=QL Capture Status, path=^/qlcap/status/v1/, enabled=true
  */
 'use strict';
-const VERSION='1.0.0', PREFIX='qlcap_v1_';
+const VERSION='1.1.0', PREFIX='qlcap_v1_';
 function pref(key){try{return String($prefs.valueForKey(PREFIX+key)||'');}catch(_){return '';}}
 function iso(key){
  const value=pref(key);
@@ -57,6 +57,14 @@ try{
    read_only:true,
    fields_are_whitelisted:true,
    capture_enabled:pref('armed')!=='0',
+   alipan_miniapp:{
+    probe_enabled:pref('armed')!=='0'&&pref('alipan_probe_armed')!=='0',
+    seen_at:iso('alipan_probe_hit_at'),
+    uploaded_at:iso('alipan_probe_last_at'),
+    last_result:['uploaded','timeout','network_error','fetch_exception',
+      'gateway_not_configured','upload_http_error','failed'].includes(
+      pref('alipan_probe_last_result'))?pref('alipan_probe_last_result'):null
+   },
    aliyun:{
     seen_at:iso('aliyun_inspect_at'),
     response_http_status:code('aliyun_inspect_http'),
