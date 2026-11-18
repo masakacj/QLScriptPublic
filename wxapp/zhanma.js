@@ -138,7 +138,6 @@ let ok = ''
  * 
  */
 async function getuser (timeout = 2 * 1000) {
-    ok = 0; // Do not reuse a previous account's authenticated state.
     return new Promise((resolve) => {
         let url = {
             url: `https://zm.t7a.cn/api/getusercenter.php?safe=${zmnlxq}`,
@@ -151,17 +150,7 @@ async function getuser (timeout = 2 * 1000) {
         }
         $.get(url, async (error, response, data) => {
             try {
-                // Invalid/empty responses are usually an expired account or network failure.
-                // Never parse undefined or continue actions with stale account state.
-                if (error || !data) {
-                    console.log('用户信息接口无有效响应，当前账号跳过（检查登录或网络）');
-                    return;
-                }
-                result = typeof data === 'string' ? JSON.parse(data) : data;
-                if (!result || typeof result !== 'object') {
-                    console.log('用户信息接口格式异常，当前账号跳过');
-                    return;
-                }
+                result = JSON.parse(data)
                 if (result.status == 1) {
                     ok = 1;
                     console.log(`用户：${result.nickname}` + `当前能量：${result.nowscore} `);
@@ -185,7 +174,7 @@ async function getuser (timeout = 2 * 1000) {
                 }
 
             } catch (e) {
-                console.log('用户信息接口数据解析失败，当前账号跳过');
+                console.log(e)
             } finally {
                 resolve();
             }
