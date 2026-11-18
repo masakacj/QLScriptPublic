@@ -59,6 +59,7 @@ function main(){
  const url=parsed(req.url);
  if(!url)return done();
  const now=Date.now();
+ put('alipan_probe_hit_at',new Date(now).toISOString());
  const day=new Date(now).toISOString().slice(0,10);
  let start=Number(get('alipan_probe_started_ms'))||0;
  if(get('alipan_probe_day')!==day){
@@ -78,14 +79,18 @@ function main(){
  const seen=get('alipan_probe_seen').split(',').filter(Boolean);
  if(seen.includes(fp))return done();
  const host=get('url').replace(/\/+$/,''),token=get('token');
- if(host!==GATEWAY||token.length<32)return done();
+ if(host!==GATEWAY||token.length<32){
+   put('alipan_probe_last_result','gateway_not_configured');
+   return done();
+ }
  const app=appID(req.headers);
  const payload={v:1,type:'qx_structure_v1',host:url.host,path:url.path,method,stage,
   query_keys:url.query,header_keys:headerNames(stage==='request_headers'?req.headers:res.headers),
   body_keys:[],body_length:null,status,wx_appid:app.id,wx_appid_source:app.source};
  let ended=false;
- function exit(ok){
+ function exit(ok,reason){
   if(ended)return;ended=true;
+  put('alipan_probe_last_result',ok?'uploaded':reason||'failed');
   if(ok){
     put('alipan_probe_seen',seen.concat(fp).slice(-80).join(','));
     put('alipan_probe_last_at',new Date().toISOString());
@@ -98,14 +103,15 @@ function main(){
   }
   done();
  }
- const timer=setTimeout(()=>exit(false),2300);
+ const timer=setTimeout(()=>exit(false,'timeout'),2300);
  try{
   $task.fetch({url:GATEWAY+'/trace/v1/ingest',method:'POST',opts:{policy:'direct'},
    headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
    body:JSON.stringify(payload)}).then(response=>{
      clearTimeout(timer);
-     exit(Number(response.statusCode||response.status||0)===200);
-   }).catch(()=>{clearTimeout(timer);exit(false);});
- }catch(_){clearTimeout(timer);exit(false);}
+     const ok=Number(response.statusCode||response.status||0)===200;
+     exit(ok,ok?'uploaded':'upload_http_error');
+   }).catch(()=>{clearTimeout(timer);exit(false,'network_error');});
+ }catch(_){clearTimeout(timer);exit(false,'fetch_exception');}
 }
 try{main();}catch(_){done();}
