@@ -7,7 +7,7 @@
  * https://raw.githubusercontent.com/masakacj/QLScriptPublic/main/quantumultx/ql-capture/http-backend-status.js, tag=QL Capture Status, path=^/qlcap/status/v1/, enabled=true
  */
 'use strict';
-const VERSION='1.1.0', PREFIX='qlcap_v1_';
+const VERSION='1.2.0', PREFIX='qlcap_v1_';
 function pref(key){try{return String($prefs.valueForKey(PREFIX+key)||'');}catch(_){return '';}}
 function iso(key){
  const value=pref(key);
@@ -31,6 +31,11 @@ function result(key){
   '安全状态已上传','网关不可达','上传超时'
  ];
  return allowed.includes(value)?value:(value?'other':null);
+}
+function alipan_host_seen(){
+ const value=pref('alipan_probe_last_host');
+ return ['open.aliyundrive.com','user.aliyundrive.com','api.aliyundrive.com',
+  'member.aliyundrive.com','cn-beijing-data.aliyundrive.net','ynuf.aliapp.org'].includes(value)?value:null;
 }
 function send(status,obj){
  $done({
@@ -59,6 +64,7 @@ try{
    capture_enabled:pref('armed')!=='0',
    alipan_miniapp:{
     probe_enabled:pref('armed')!=='0'&&pref('alipan_probe_armed')!=='0',
+    last_host:alipan_host_seen(),
     seen_at:iso('alipan_probe_hit_at'),
     uploaded_at:iso('alipan_probe_last_at'),
     last_result:['uploaded','timeout','network_error','fetch_exception',
