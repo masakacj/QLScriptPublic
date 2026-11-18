@@ -131,15 +131,30 @@ def fingerprint(uid):
     return hashlib.sha256(("ALIPAN_UID_V1:"+uid).encode()).hexdigest()
 
 def get_credential():
+    """Require the private QX/YYB enrollment; never retry invalid legacy tokens.
+
+    The legacy ALIYUN_ACCOUNTS value is known to be rejected by Aliyun and
+    has no account fingerprint. A 32-char length is not proof of validity.
+    """
+    pin=ql_env(PIN_ENV).lower()
     fresh=ql_env(REFRESH_ENV)
-    if ALLOWED_LENGTH.fullmatch(fresh):return fresh,"ql_refresh"
-    legacy=ql_env("ALIYUN_ACCOUNTS").split("&",1)[0].split("#",1)[0].strip()
-    if ALLOWED_LENGTH.fullmatch(legacy):return legacy,"legacy"
-    raise Failure("refresh_token_missing")
+    if not HEX64.fullmatch(pin) or not ALLOWED_LENGTH.fullmatch(fresh):
+        raise Failure("initial_authorization_pending")
+    return fresh,"ql_refresh"
 
 def renew(refresh):
-    data=fetch_json(AUTH_URL,{"grant_type":"refresh_token","app_id":ALI_APP,
-                             "refresh_token":refresh},timeout=17)
+    # Confirm identity guard BEFORE refreshing: provider may rotate the
+    # refresh token as part of this operation.
+    pin=ql_env(PIN_ENV).lower()
+    if not HEX64.fullmatch(pin):
+        raise Failure("identity_pin_not_enrolled")
+    try:
+        data=fetch_json(AUTH_URL,{"grant_type":"refresh_token","app_id":ALI_APP,
+                                 "refresh_token":refresh},timeout=17)
+    except Failure as exc:
+        if exc.code=="upstream_http_400":
+            raise Failure("refresh_rejected_http_400") from None
+        raise
     if "access_token" not in data:
         raise Failure("refresh_rejected")
     access=data.get("access_token")
@@ -148,16 +163,16 @@ def renew(refresh):
     if (not isinstance(access,str) or not 40<=len(access)<=5000 or
        not isinstance(new_refresh,str) or not ALLOWED_LENGTH.fullmatch(new_refresh)):
         raise Failure("refresh_response_invalid")
-    pin=ql_env(PIN_ENV).lower()
-    if not HEX64.fullmatch(pin):
-        raise Failure("identity_pin_not_enrolled")
     if fingerprint(uid)!=pin:
         raise Failure("account_identity_mismatch")
-    # Validate business identity as well as token response, before any activity submission.
+    # Provider returned a verified, pinned UID. Persist the newly rotated
+    # refresh token IMMEDIATELY so a later profile/network error cannot
+    # strand the account with an invalidated previous refresh token.
+    persist_refresh(new_refresh)
+    # Business profile verification still gates every sign-in operation.
     profile=fetch_json(PROFILE_URL,{},headers={"Authorization":"Bearer "+access})
     if (not profile.get("user_id") or profile.get("user_id")!=uid):
         raise Failure("refreshed_profile_mismatch")
-    persist_refresh(new_refresh)
     return access,new_refresh
 
 def sign(access):
@@ -247,8 +262,10 @@ def run(*,dry_run=False):
             access,_=renew(refresh)
         except Failure as err:
             reason=err.code
-            if reason in ("refresh_token_missing","refresh_rejected"):
-                reason+=";yyb_wx_code_available_but_exchange_unverified"
+            if reason=="initial_authorization_pending":
+                reason+=";qx_bootstrap_not_received;yyb_code_exchange_unverified"
+            elif reason in ("refresh_rejected","refresh_rejected_http_400"):
+                reason+=";refresh_token_invalid_or_expired"
             report("authentication",status="签到失败",day=now,error=reason)
             marker=state.get("error_notified_day")
             if marker!=now:
