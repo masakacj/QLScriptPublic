@@ -1,6 +1,6 @@
 /* QX manual status diagnostic - no credentials or cookie values in logs. */
 'use strict';
-const VERSION='2.1.0', P='qlcap_v1_';
+const VERSION='2.2.0', P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Status v'+VERSION+'] '+x);}
 function note(title,msg){log(title+' / '+msg);if(typeof $notify==='function')$notify('青龙采集 v'+VERSION,title,msg);}
 function read(k){return $prefs.valueForKey(P+k)||'';}
@@ -25,7 +25,12 @@ function alipanStatus(){
  const hit=read('alipan_probe_hit_at'),up=read('alipan_probe_last_at');
  const result=read('alipan_probe_last_result')||'尚未尝试';
  if(!hit)return '未命中阿里云盘域名';
- return '命中 '+age('alipan_probe_hit_at')+
+ const host=read('alipan_probe_last_host');
+ const allowed=['open.aliyundrive.com','user.aliyundrive.com',
+  'api.aliyundrive.com','member.aliyundrive.com',
+  'cn-beijing-data.aliyundrive.net','ynuf.aliapp.org'];
+ const shown=allowed.includes(host)?host:'其他受控域名';
+ return '命中 '+shown+'（'+age('alipan_probe_hit_at')+'）'+
    ' · 上传 '+(up?age('alipan_probe_last_at'):'未成功')+
    ' · '+result;
 }
