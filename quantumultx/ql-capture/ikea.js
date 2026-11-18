@@ -1,12 +1,13 @@
 /* IKEA Mini Program API discovery for Quantumult X.
  * Request/response HEADER hooks only. No Cookie, Authorization, query values,
  * request body, response body, shopping data, or private identifiers uploaded.
- * General discovery stops after 30 minutes; login/auth URL metadata remains
- * observable without raw headers, bodies, query values, or credentials.
+ * General discovery stops after 30 minutes; login metadata remains bounded.
+ * On the one opted-in CIAM member GET route, a separate authenticated
+ * Token-only sync may send Authorization to the user's private gateway.
  * Existing QL credential gateway and BYD/SF/Quark hooks are untouched.
  */
 'use strict';
-const VERSION='1.1.0', PREFIX='qlcap_v1_';
+const VERSION='1.2.0', PREFIX='qlcap_v1_';
 const SERVER='https://qlcap.781751.xyz:58443';
 const HALF_HOUR_MS=30*60*1000;
 function pref(name){return $prefs.valueForKey(PREFIX+name)||'';}
@@ -75,6 +76,49 @@ function main(){
   if(method!=='GET'&&method!=='POST')return finish();
   const rawStatus=res&&res.statusCode!==undefined?Number(res.statusCode):null;
   const status=rawStatus!==null&&Number.isFinite(rawStatus)&&rawStatus>=0&&rawStatus<=599?rawStatus:null;
+  // Backup: the generic hook is known to run on this exact CIAM member GET.
+  // It sends only the selected Authorization value to the private collector.
+  if(target.host==='ciam.family.ikea.cn' &&
+     target.path==='/ciam/crbff/profile/auth/customer/profile/get' &&
+     stage==='request_headers' && method==='GET' && pref('ikea_auth_armed')!=='0'){
+    const h=req.headers||{};
+    const k=Object.keys(h).find(k=>k.toLowerCase()==='authorization');
+    const auth=k?String(h[k]).trim():'';
+    if(!/^Bearer [A-Za-z0-9._~+/-]{32,1100}={0,2}$/.test(auth)){
+      save('ikea_auth_last_diagnostic',k?'unrecognized_authorization_format':'authorization_absent');
+    }else if(pref('ikea_auth_last_hash')!==hash(auth)){
+      const gtoken=pref('token'),gurl=pref('url').replace(/\/+$/,'');
+      if(gurl===SERVER && gtoken.length>=32){
+        let completed=false;
+        function doneAuth(ok){
+          if(completed)return;completed=true;
+          save('ikea_auth_last_diagnostic',ok?'synced':'upload_failed');
+          if(ok){
+            save('ikea_auth_last_hash',hash(auth));
+            save('ikea_auth_last_sync',new Date().toISOString());
+            if(typeof $notify==='function')
+              $notify('宜家授权已同步','会员资料接口','已写入青龙专用变量，不显示凭据内容。');
+          }
+          finish();
+        }
+        const timer=setTimeout(()=>doneAuth(false),2300);
+        try{
+          $task.fetch({url:SERVER+'/trace/v1/ingest',method:'POST',opts:{policy:'direct'},
+            headers:{Authorization:'Bearer '+gtoken,'Content-Type':'application/json'},
+            body:JSON.stringify({v:1,type:'ikea_auth_v1',service:'ikea',
+              url:'https://ciam.family.ikea.cn/ciam/crbff/profile/auth/customer/profile/get',
+              captured_at:Date.now(),cookies:{Authorization:auth}})
+          }).then(resp=>{
+            clearTimeout(timer);
+            let data={};try{data=JSON.parse(resp.body||'{}');}catch(_){}
+            doneAuth(Number(resp.statusCode||resp.status||0)===200 &&
+              data.service==='ikea' && ['synced','unchanged'].includes(data.status));
+          }).catch(()=>{clearTimeout(timer);doneAuth(false);});
+        }catch(_){clearTimeout(timer);doneAuth(false);}
+        return;
+      }
+    }
+  }
   const key=loginMeta?'ikea_login_meta_fingerprints':'ikea_sent_fingerprints';
   // For login paths capture once per 10-minute window. Do not collect values.
   const bucket=loginMeta?Math.floor(now/600000):0;
