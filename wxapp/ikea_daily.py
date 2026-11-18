@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""IKEA China miniapp daily member check-in, first scheduled run 2026-11-18 09:12.
+"""IKEA China miniapp member check-in with verified YYB token renewal.
 
 Environment provided by QingLong:
-  IKEA_AUTHORIZATION: a scoped Bearer token captured from user's own miniapp
-  IKEA_SIGNIN_DRY_RUN: 1 for strictly read-only preflight (optional)
-The script NEVER tries to manufacture an IKEA business token from WeChat wx.login.
-Credentials, partyUid, response bodies, identity fields and raw URLs are not logged.
+  IKEA_AUTHORIZATION: current scoped IKEA bearer, auto-renewed if needed
+  IKEA_MEMBER_PIN_SHA256: pinned hash of original member's partyUid
+  YYB_SERVER / YYB_API_KEY: existing single-account YYB service credentials
+  IKEA_SIGNIN_DRY_RUN: 1 means READ-only; no YYB exchange or sign-in
+Credentials, partyUid, response bodies and identity fields are never logged.
 """
 from __future__ import annotations
 import base64,datetime,json,os,re,sys,time,urllib.parse
@@ -56,6 +57,22 @@ def authorization():
     if not 35<=len(s)<=1200 or not re.fullmatch(r"Bearer [A-Za-z0-9._~+/-]+={0,2}",s):
         raise SigninError("宜家凭据格式不符合预期")
     return s
+
+def automated_authorization():
+    # Only the verified member can receive a freshly exchanged YYB token.
+    # The helper itself validates the current bearer, expiry and pinned member
+    # identity before reading or rotating the dedicated QingLong variable.
+    try:
+        from ikea_yyb_token import ensure_business_token,RenewalError
+    except ImportError:
+        raise SigninError("宜家 YYB 自动授权模块未安装") from None
+    old=os.environ.get(TOKEN_VAR,"").strip()
+    try:
+        return ensure_business_token(current=old if old.startswith("Bearer ") else None,
+                                     dry_run=DRY_RUN)
+    except RenewalError as e:
+        raise SigninError("宜家自动授权失败："+e.code) from None
+
 
 def request_json(method,host,path,token,params=None,payload=None):
     if host not in (BASE,CIAM) or not path.startswith("/") or any(q in path for q in ("http:","https:","@","\\","\n")):
@@ -152,7 +169,7 @@ def sign(token,party_uid,activity_id,gameplay_id):
 def run():
     date=datetime.datetime.now(TZ).date().isoformat()
     log("start",date=date,dry_run=DRY_RUN)
-    token=authorization()
+    token=automated_authorization()
     activity_id,gameplay_id=get_activity(token)
     before=get_participant(token,activity_id)
     if is_today(before.get("lastSignInDate"),date):
