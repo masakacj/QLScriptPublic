@@ -198,13 +198,31 @@ def save_state(doc):
         if os.path.exists(temp):os.unlink(temp)
 
 def notify(message,success,once=True):
-    """Use QingLong's existing notification system, not a new Bark endpoint."""
+    """Deliver via existing, verified self-hosted Bark destination.
+
+    Other QL tasks may set QL_SUMMARY_ONLY in the generic notify module,
+    so use the same single Bark destination as the existing daily digest.
+    Do not print destination/device secret or retry an ambiguous push.
+    """
     try:
-        from notify import send
-        send("阿里云盘签到"+("成功" if success else "失败"),message)
-        return "sent"
+        import importlib.util
+        module_path=ROOT/"scripts/ql_daily_digest_v2.py"
+        spec=importlib.util.spec_from_file_location("alipan_ql_bark",module_path)
+        if not spec or not spec.loader:raise RuntimeError("Bark destination helper unavailable")
+        dest=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dest)
+        base,key=dest.bark_destination()
+        req=request.Request(base+"/push",method="POST",
+          data=json.dumps({"device_key":key,
+             "title":"阿里云盘签到"+("成功" if success else "失败"),
+             "body":message,"group":"阿里云盘"},
+             ensure_ascii=False,separators=(",",":")).encode("utf-8"),
+          headers={"Content-Type":"application/json; charset=utf-8"})
+        with request.urlopen(req,timeout=20) as resp:
+            result=json.loads(resp.read(10000))
+        return "sent" if result.get("code")==200 else "unconfirmed"
     except Exception:
-        # Never dump exception bodies from notification plugins.
+        # No values from Bark, network errors or credentials in logs.
         return "unavailable"
 
 def run(*,dry_run=False):
