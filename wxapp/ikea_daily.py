@@ -63,7 +63,7 @@ def request_json(method,host,path,token,params=None,payload=None):
       "User-Agent":UA,
       "X-Client-Platform":"WechatMiniprogram",
       "X-Client-Render":"jssdk",
-      "Source":"IKEA_FAMILY_MINI_P",
+      "Source":"SHOPPABLE_MINI_P",
     }
     req=urllib.request.Request(url,method=method,headers=headers,data=body)
     try:
