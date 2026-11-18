@@ -21,7 +21,9 @@ function main(){
  if(get('armed')==='0'||get('ikea_auth_armed')==='0')return finish();
  const req=(typeof $request!=='undefined'&&$request)||{};
  const url=String(req.url||'');
- if(!/^https:\/\/bff\.app\.ikea\.cn\/customer-bff\/v3\.0\/activity(?:[/?]|$)/i.test(url))return finish();
+ // Only user-requested READ endpoints. No login, payment, orders or bodies.
+ const route=/^https:\/\/bff\.app\.ikea\.cn(\/customer-bff\/(?:v3\.0\/activity(?:\/participants)?|customer\/(?:info|profile\/get)|point\/benefit\/summary))(?:\?|$)/i.exec(url);
+ if(!route)return finish();
  if(String(req.method||'').toUpperCase()!=='GET')return finish();
  const auth=tokenFrom(req.headers);
  if(!auth)return finish();
@@ -34,7 +36,7 @@ function main(){
   if(ok){
    set('ikea_auth_last_hash',fingerprint);
    set('ikea_auth_last_sync',new Date().toISOString());
-   if(typeof $notify==='function')$notify('宜家登录凭据已同步','已保存至青龙','签到任务可以在次日自动使用，具体令牌内容不会显示。');
+   if(typeof $notify==='function')$notify('宜家登录凭据已同步','已保存至青龙','正在等待只读业务验证，具体令牌内容不会显示。');
   }
   finish();
  }
@@ -42,7 +44,7 @@ function main(){
  try{
   $task.fetch({url:HOST+'/trace/v1/ingest',method:'POST',opts:{policy:'direct'},
    headers:{Authorization:'Bearer '+get('token'),'Content-Type':'application/json'},
-   body:JSON.stringify({v:1,type:'ikea_auth_v1',service:'ikea',url:'https://bff.app.ikea.cn/customer-bff/v3.0/activity',
+   body:JSON.stringify({v:1,type:'ikea_auth_v1',service:'ikea',url:'https://bff.app.ikea.cn'+route[1],
     captured_at:Date.now(),cookies:{Authorization:auth}})
   }).then(r=>{
    clearTimeout(tid);
