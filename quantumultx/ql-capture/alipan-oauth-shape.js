@@ -3,7 +3,7 @@
  */
 'use strict';
 const P='qlcap_v1_',ENDPOINT='https://open.aliyundrive.com/idp/oauth/access_token';
-const GATE='https://qlcap.781751.xyz:58443', APP='wxf86f0a56fa23241f';
+const GATE='https://qlcap.781751.xyz:58443', APP='wxf86f0a56fa23241f', BUILD='alipan-oauth-20261118-r2';
 function p(k){return $prefs.valueForKey(P+k)||'';}
 function s(k,v){$prefs.setValueForKey(String(v),P+k);}
 function done(){$done({});}
@@ -47,12 +47,13 @@ function main(){
  const stage=res?'response_body':'request_body';
  const now=Date.now(),key=stage==='request_body'?'request':'response';
  const day=new Date(now).toISOString().slice(0,10);
- if(p('alipan_schema_day')!==day){
+ if(p('alipan_schema_day')!==day || p('alipan_schema_build')!==BUILD){
+  s('alipan_schema_build',BUILD);
   s('alipan_schema_day',day);
   s('alipan_schema_start',now);
   s('alipan_schema_seen','');
  }
- if(now-(Number(p('alipan_schema_start'))||now)>30*60*1000)return done();
+ if(now-(Number(p('alipan_schema_start'))||now)>90*60*1000)return done();
  const body=key==='request'?req.body:res.body;
  const keys=fields(body);
  s('alipan_schema_hit_at',new Date(now).toISOString());
