@@ -4,10 +4,11 @@
  */
 'use strict';
 const P='qlcap_v1_', GATE='https://qlcap.781751.xyz:58443';
-const APP='wxf86f0a56fa23241f', BUILD='alipan-login-20261118-r1';
-const LIMIT_MS=60*60*1000;
+const APP='wxf86f0a56fa23241f', BUILD='alipan-login-20261119-passport-r2';
+const LIMIT_MS=90*60*1000;
 const HOSTS=new Set(['auth.aliyundrive.com','open.aliyundrive.com',
- 'api.aliyundrive.com','user.aliyundrive.com','member.aliyundrive.com']);
+ 'api.aliyundrive.com','user.aliyundrive.com','member.aliyundrive.com',
+ 'passport.aliyundrive.com']);
 function get(k){return $prefs.valueForKey(P+k)||'';}
 function set(k,v){return $prefs.setValueForKey(String(v),P+k);}
 function done(){$done({});}
@@ -20,8 +21,11 @@ function pathInfo(raw){
  if(!m)return null;
  const host=m[1].toLowerCase(),full=m[2]||'/';
  if(!HOSTS.has(host))return null;
- // Request inspection is scoped to login/auth/identity-related API segments.
- if(!/(?:^|\/)(?:auth|oauth|idp|login|signin|account|passport|token|session|phone|mobile|wechat|wx|verify|user)(?:\/|_|$)/i.test(full))return null;
+ // Passport is accepted on the exact observed POST endpoint only.
+ if(host==='passport.aliyundrive.com' && full!=='/mini_program/login.do')return null;
+ // Other hosts remain restricted to login/auth/identity-related API segments.
+ if(host!=='passport.aliyundrive.com' &&
+    !/(?:^|\/)(?:auth|oauth|idp|login|signin|account|passport|token|session|phone|mobile|wechat|wx|verify|user)(?:\/|_|$)/i.test(full))return null;
  const path=full.split('/').map(part=>
    part.length>30 || /[0-9a-f]{16,}/i.test(part) || /\d{6,}/.test(part)
     || !/^[A-Za-z0-9_.-]*$/.test(part)?'_id_':part
@@ -41,8 +45,11 @@ function fieldNames(body){
  let raw='';
  if(typeof body==='string')raw=body;
  else if(typeof body==='object'&&!(body instanceof ArrayBuffer)){
-  if(!Array.isArray(body))return Object.keys(body).filter(key=>
-    /^[A-Za-z_][A-Za-z0-9_.-]{0,55}$/.test(key)).slice(0,40);
+  if(!Array.isArray(body)){
+   const out=[];
+   for(const key of Object.keys(body).slice(0,40))if(/^[A-Za-z_][A-Za-z0-9_.-]{0,55}$/.test(key))out.push(key);
+   return out;
+  }
   return [];
  }else return [];
  if(raw.length>60000)return [];
@@ -56,6 +63,14 @@ function fieldNames(body){
   const obj=JSON.parse(raw);
   if(obj&&typeof obj==='object'&&!Array.isArray(obj)){
    for(const k of Object.keys(obj))add(k);
+   // The passport response may nest an id_token under data/result.
+   // Key names only: never read a nested value that is not a plain object.
+   for(const prefix of ['data','result']){
+    const child=obj[prefix];
+    if(child&&typeof child==='object'&&!Array.isArray(child)){
+     for(const k of Object.keys(child).slice(0,25))add(prefix+'.'+k);
+    }
+   }
   }
  }catch(_){
   if(raw.trim().startsWith('{')||raw.trim().startsWith('['))return [];
