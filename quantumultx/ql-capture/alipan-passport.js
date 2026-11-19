@@ -7,7 +7,7 @@
 const P='qlcap_v1_',GATE='https://qlcap.781751.xyz:58443';
 const APP='wxf86f0a56fa23241f';
 const TARGET='https://passport.aliyundrive.com/mini_program/login.do';
-const BUILD='alipan-passport-20261119-r2';
+const BUILD='alipan-passport-20261119-r3';
 function get(k){return $prefs.valueForKey(P+k)||'';}
 function put(k,v){return $prefs.setValueForKey(String(v),P+k);}
 function done(){if(typeof $done==='function')$done({});}
@@ -47,7 +47,7 @@ function candidateNodes(doc){
  // Explore a bounded set of *known schema containers*. Never recurse through
  // arbitrary account/profile objects or record their values.
  const out=[],queue=[{value:doc,depth:0}];
- const keys=['content','data','result','payload','businessData'];
+ const keys=['content','data','result','payload','businessData','pds_login_result'];
  while(queue.length && out.length<14){
   const item=queue.shift(),obj=jsonObject(item.value);
   if(!obj || out.includes(obj))continue;
