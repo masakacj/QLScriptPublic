@@ -1,6 +1,6 @@
 /* QX manual status diagnostic - no credentials or cookie values in logs. */
 'use strict';
-const VERSION='2.6.0', P='qlcap_v1_';
+const VERSION='2.7.0', P='qlcap_v1_';
 function log(x){if(typeof console!=='undefined'&&console.log)console.log('[QL Status v'+VERSION+'] '+x);}
 function note(title,msg){log(title+' / '+msg);if(typeof $notify==='function')$notify('青龙采集 v'+VERSION,title,msg);}
 function read(k){return $prefs.valueForKey(P+k)||'';}
@@ -34,13 +34,15 @@ function alipanStatus(){
  const refresh=read('alipan_refresh_last_result')||'未触发';
  const schema=read('alipan_schema_last_result')||'未触发';
  const login=read('alipan_login_shape_last_result')||'未触发';
+ const passport=read('alipan_passport_status')||'未触发';
  const loginHost=read('alipan_login_shape_last_host');
  const loginLocation=loginHost?('（'+loginHost+'）'):'';
  return '命中 '+shown+'（'+age('alipan_probe_hit_at')+'）'+
    ' · 上传 '+(up?age('alipan_probe_last_at'):'未成功')+
    ' · '+result+' · 凭据兼容验证：'+authProbe+
    ' · Refresh接入：'+refresh+' · OAuth结构：'+schema+
-   ' · 登录结构：'+login+loginLocation;
+   ' · 登录结构：'+login+loginLocation+
+   ' · Passport凭据：'+passport;
 }
 function bydStatus(){
  const hit=Boolean(read('bydhy_seen_at'));
