@@ -7,7 +7,7 @@
 const P='qlcap_v1_',GATE='https://qlcap.781751.xyz:58443';
 const APP='wxf86f0a56fa23241f';
 const TARGET='https://passport.aliyundrive.com/mini_program/login.do';
-const BUILD='alipan-passport-20261119-r1';
+const BUILD='alipan-passport-20261119-r2';
 function get(k){return $prefs.valueForKey(P+k)||'';}
 function put(k,v){return $prefs.setValueForKey(String(v),P+k);}
 function done(){if(typeof $done==='function')$done({});}
@@ -44,20 +44,21 @@ function decodeB64(str){
  return output;
 }
 function candidateNodes(doc){
- const result=[];
- function add(obj){
-  const o=jsonObject(obj);
-  if(o && result.indexOf(o)<0 && result.length<12)result.push(o);
+ // Explore a bounded set of *known schema containers*. Never recurse through
+ // arbitrary account/profile objects or record their values.
+ const out=[],queue=[{value:doc,depth:0}];
+ const keys=['content','data','result','payload','businessData'];
+ while(queue.length && out.length<14){
+  const item=queue.shift(),obj=jsonObject(item.value);
+  if(!obj || out.includes(obj))continue;
+  out.push(obj);
+  if(item.depth>=4)continue;
+  for(const key of keys){
+   if(Object.prototype.hasOwnProperty.call(obj,key))
+    queue.push({value:obj[key],depth:item.depth+1});
+  }
  }
- add(doc);
- const d=jsonObject(doc);
- if(d){
-  add(d.data);add(d.result);add(d.content);
-  const content=jsonObject(d.content),data=jsonObject(d.data);
-  if(content){add(content.data);add(content.result);}
-  if(data){add(data.data);add(data.result);}
- }
- return result;
+ return out;
 }
 function extractToken(doc){
  const nodes=candidateNodes(doc);
@@ -66,10 +67,11 @@ function extractToken(doc){
    const t=n[k];
    if(typeof t==='string' && /^[A-Za-z0-9_-]{32,256}$/.test(t))return t;
   }
-  for(const k of ['bizExt','biz_ext']){
+  for(const k of ['bizExt','biz_ext','data']){
+   // Legacy bizExt and some nested data envelopes are Base64 JSON.
+   // Decode locally and extract only the exact refresh-token field.
    const raw=decodeB64(n[k]);
    if(!raw)continue;
-   // bizExt is an opaque Base64 login payload; extract only the token.
    const decoded=jsonObject(raw);
    if(!decoded)continue;
    for(const obj of candidateNodes(decoded)){
@@ -83,23 +85,25 @@ function extractToken(doc){
  return null;
 }
 function fieldNames(doc){
- const keys=[],seen=new Set();
- const nodes=candidateNodes(doc);
+ const out=[],seen=new Set();
  function add(k){
   if(typeof k==='string' && /^[A-Za-z_][A-Za-z0-9_.-]{0,55}$/.test(k) &&
-      !seen.has(k) && keys.length<40){seen.add(k);keys.push(k);}
+      !seen.has(k) && out.length<40){seen.add(k);out.push(k);}
  }
- const root=nodes[0];
- if(root){
-  for(const k of Object.keys(root).slice(0,30))add(k);
-  for(const k of ['content','data','result']){
-   const child=jsonObject(root[k]);
-   if(child){
-    for(const v of Object.keys(child).slice(0,18))add(k+'.'+v);
-   }
+ const queue=[{value:doc,prefix:'',depth:0}];
+ const visited=new Set();
+ while(queue.length && out.length<40){
+  const {value,prefix,depth}=queue.shift(),obj=jsonObject(value);
+  if(!obj || visited.has(obj))continue;
+  visited.add(obj);
+  for(const key of Object.keys(obj).slice(0,22)){
+   const field=prefix?prefix+'.'+key:key;
+   add(field);
+   if(depth<3 && ['content','data','result','payload','businessData'].includes(key))
+    queue.push({value:obj[key],prefix:field,depth:depth+1});
   }
  }
- return keys;
+ return out;
 }
 function fingerprint(s){
  let hash=2166136261;
